@@ -148,4 +148,51 @@ defmodule NistView.BioctsSampleTest do
       assert Base.encode16(:crypto.hash(:sha256, pixels), case: :lower) == sha, name
     end
   end
+
+  # SHA-256 of OpenJPEG 2.5.4 `opj_decompress` output. All 12 distinct
+  # JPEG 2000 images in the set were compared bit for bit on 2026-09-29.
+  @opj_sha256 [
+    {"pass-type-15-palms.an2", 2,
+     "4454c09c35143902ef9958e61af8b5657a099a95ee37ff679fdccac984c7597c"},
+    {"pass-type-10-scar-face-sap50-addedRequiredInfoItems.an2", 2,
+     "ca4359ab687106d696a1a635531b3ecb2611e87bb47bb37d1d42c8b4d0f1d7fc"}
+  ]
+
+  test "JPEG 2000 decoding is bit-identical to OpenJPEG opj_decompress" do
+    for {name, idc, sha} <- @opj_sha256 do
+      record =
+        name
+        |> parse!()
+        |> Map.fetch!(:records)
+        |> Enum.find(&((&1.idc == idc and &1.image) && &1.image.format in [:jp2, :jp2l]))
+
+      assert {:ok, %{pixels: pixels}} = Imaging.decode(record.image)
+      assert Base.encode16(:crypto.hash(:sha256, pixels), case: :lower) == sha, name
+    end
+  end
+
+  test "every image in every file is displayable" do
+    for name <- File.ls!(@dir),
+        {_, file} = parse_any(name),
+        %Record{image: image} = record <- file.records,
+        image do
+      assert {:ok, _mime, _bytes} = Imaging.displayable(image),
+             "#{name} Type-#{record.type} IDC #{record.idc} (#{image.label})"
+    end
+  end
+
+  test "images whose label disagrees with their data are decoded by their data" do
+    file = parse!("pass-type-10-14-17-piv-index-iris-replacedCorruptImages_fixedAspectRatio.an2")
+
+    mislabelled = for %Record{image: %{compression: :jpegl} = image} <- file.records, do: image
+    assert [_, _] = mislabelled
+    assert Enum.all?(mislabelled, &(&1.format == :jpegb))
+  end
+
+  defp parse_any(name) do
+    case Parser.parse(File.read!(Path.join(@dir, name))) do
+      {:ok, file} -> {:ok, file}
+      {:error, _error, file} -> {:error, file}
+    end
+  end
 end

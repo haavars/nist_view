@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 rustler = "0.38"
 png = "0.18"
+jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys"] }
 
 [build-dependencies]
 cc = "1"

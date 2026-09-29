@@ -70,6 +70,17 @@ defmodule NistView.ParserTest do
       assert {:ok, %{records: [_, %Record{image: %{ppi: 500}}]}} = Parser.parse(data)
     end
 
+    test "detects the data's real format, except for uncompressed images" do
+      wsq = File.read!("test/fixtures/synthetic.wsq")
+
+      data = transaction([{14, 1, type14(1, cga: "JPEGB", data: wsq)}])
+      assert {:ok, %{records: [_, %Record{image: image}]}} = Parser.parse(data)
+      assert {image.compression, image.format} == {:jpegb, :wsq}
+
+      data = transaction([{14, 1, type14(1, cga: "NONE", data: wsq)}])
+      assert {:ok, %{records: [_, %Record{image: %{format: :raw}}]}} = Parser.parse(data)
+    end
+
     test "normalises compression labels and keeps unknown ones" do
       for {label, expected} <- [
             {"WSQ", :wsq},

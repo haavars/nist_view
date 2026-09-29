@@ -51,9 +51,7 @@ The legacy standard fields 9.005–9.012 and vendor blocks are shown as fields o
 
 **Unknown or non-standard fields** (e.g. phantom's `14.901` / `15.901`) are shown as generic fields, never rejected.
 
-Codecs, in priority order:
-1. **v1 (seen in real files):** WSQ, PNG, JPEG baseline, raw greyscale.
-2. **Later (in the standard, not seen yet):** JPEG lossless, JPEG 2000 (lossy and lossless).
+Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (lossy and lossless), JPEG lossless.
 
 ---
 
@@ -104,9 +102,10 @@ Codecs, in priority order:
 
 ### 3.2 Codecs (`nist_codecs` Rust NIF)
 - API (all run on dirty CPU schedulers), as built in M0 (`NistView.Codecs`):
-  - `decode_wsq(bytes) :: {:ok, %{width, height, channels, bit_depth, ppi, pixels}} | {:error, reason}`. Further decoders follow the same shape, and `NistView.Imaging` dispatches on the compression.
+  - `decode_wsq/1`, `decode_jpegl/1`, `decode_jp2/1 :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. `NistView.Imaging` dispatches on the detected format.
+  - `ycbcr_to_rgb(pixels) :: {:ok, binary}`
   - `encode_png(pixels, width, height, channels) :: {:ok, binary} | {:error, reason}`
-- WSQ and JPEGL come from vendored NBIS sources (public domain), compiled via `cc` in `build.rs`. For WSQ that is 23 files from NBIS 5.0.0 (`native/nist_codecs/vendor/nbis/README.md`). Findings:
+- WSQ and JPEGL come from vendored NBIS sources (public domain), compiled via `cc` in `build.rs`: 27 files from NBIS 5.0.0 (`native/nist_codecs/vendor/nbis/README.md`). Findings:
   - `__NBISLE__` must be defined on little-endian targets.
   - The WSQ decoder keeps its tables in globals, so calls are serialised with a mutex.
   - NBIS prints errors to stderr; a force-included header routes them to a no-op.
@@ -178,7 +177,7 @@ Codecs, in priority order:
 |---|---|---|
 | M0 | Spike ✅ (BioCTS and phantom; Prüm samples still to run) | CLI (`mix nist.dump file.nst`) prints the record tree for the Prüm samples (including the all-Type-4 CPS file) and a phantom enrolment; one WSQ Type-4 image decodes to PNG |
 | M1 | Parser complete ✅ (Prüm samples still to run) | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
-| M2 | Codecs complete (WSQ, PNG, JPEGB, raw ✅; JPEG 2000 and JPEGL open) | WSQ, JPEGB, PNG and raw decode, with bit-exact WSQ results against NBIS `dwsq`. JPEGL and JP2/JP2L follow once a real file needs them |
+| M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
 | M5 | Hardening | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
@@ -205,12 +204,22 @@ Codecs, in priority order:
 - Still to run: the Prüm samples, whose Type-9 is M1.
 
 **M2 status (2026-09-29).**
-- WSQ: all 47 distinct WSQ images in the BioCTS set decode bit-identically to NBIS 5.0.0 `dwsq`, built from the same release. A sample test pins two SHA-256 hashes.
-- PNG and JPEGB are passed to the webview, and uncompressed 8-bit greyscale and RGB are converted to PNG.
-- Open: JP2/JP2L (34 BioCTS images) and JPEGL (2). See open question 1.
+- **WSQ:** all 47 distinct WSQ images in the BioCTS set decode bit-identically to NBIS 5.0.0 `dwsq`, built from the same release.
+- **JPEG 2000:** `jpeg2k` 0.10 with the bundled OpenJPEG. All 12 distinct JP2/JP2L images in BioCTS decode bit-identically to `opj_decompress` 2.5.4. They are all 8-bit greyscale or sRGB.
+  - Components are converted to 8-bit by our own code, not the crate's `get_pixels`. This handles signed samples, precisions above 8 bits (scaled), subsampled components (replicated) and sYCC.
+  - CMYK and e-sYCC are refused.
+- **Lossless JPEG:** the NBIS `jpegl` decoder, vendored like WSQ, plus a C wrapper that interleaves and upsamples the component planes.
+  - BioCTS has no real lossless JPEG. Its two `JPEGL` records hold baseline JPEG.
+  - Coverage comes from synthetic fixtures made with NBIS `cjpegl`: greyscale, RGB and 4:2:0 YCbCr, all decoded exactly.
+- **Format detection:** `NistView.ImageFormat` reads the data's signature, and decoding follows the bytes, not the label.
+  - BioCTS has four mislabelled images: two `JPEGL` that are baseline JPEG, and two `JPEGB` in a `fail-*` file that are WSQ.
+  - Uncompressed (`NONE`) images are never overridden, since pixel data could start with a signature by chance.
+- **YCbCr:** converted to RGB in one place (`NistView.Imaging`), when the decoder reports sYCC or the record's colour space (10.012/17.013) says YCC or SYCC.
+- **Size limits:** every decoder reads dimensions from the header first (WSQ SOF, JPEG SOFn, J2K SIZ, JP2 `ihdr`) and refuses images over 100 megapixels.
+- **Tests:** sample tests pin SHA-256 hashes of `dwsq` and `opj_decompress` output and check that every image in all 96 BioCTS files displays. Synthetic lossless fixtures check exact pixels, including 16-bit scaling.
 
 ## 8. Open questions
-1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. Still open: do any files we need to view use JPEG 2000 (common at 1000 ppi) or JPEGL, or contain Type-17 iris?
+1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. JPEG 2000 and JPEGL are now supported anyway. Still open: do the files we need to view contain Type-17 iris?
 2. ~~Which Type-9 minutiae block?~~ *Answered for Prüm:* INCITS 378 / M1. abis_next writes EFS. Still open: which block INT-I 4.22 files use, and whether we will see vendor-specific blocks.
 3. Will we need current INT-I v6 files? They are XML only (see the non-goals).
 4. Which platforms are really needed? Is Windows in scope, and is macOS only for development?

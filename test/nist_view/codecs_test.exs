@@ -45,6 +45,93 @@ defmodule NistView.CodecsTest do
     end
   end
 
+  defp fixture(name), do: File.read!(Path.join("test/fixtures", name))
+
+  defp pattern(fun) do
+    for y <- 0..95, x <- 0..127, into: <<>>, do: fun.(x, y)
+  end
+
+  defp ridges, do: pattern(&<<expected_pixel(&1, &2)>>)
+  defp rgb, do: pattern(&<<rem(&1 * 2, 256), rem(&2 * 2, 256), rem(&1 + &2, 256)>>)
+
+  describe "decode_jpegl/1" do
+    test "decodes greyscale exactly" do
+      assert {:ok, decoded} = Codecs.decode_jpegl(fixture("synthetic_grey.jpl"))
+      assert %{width: 128, height: 96, channels: 1, ppi: 500, colorspace: :gray} = decoded
+      assert decoded.pixels == ridges()
+    end
+
+    test "decodes interleaved RGB exactly" do
+      assert {:ok, %{channels: 3, colorspace: :unspecified} = decoded} =
+               Codecs.decode_jpegl(fixture("synthetic_rgb.jpl"))
+
+      assert decoded.pixels == rgb()
+    end
+
+    test "upsamples subsampled components by replication" do
+      assert {:ok, %{width: 128, height: 96, channels: 3} = decoded} =
+               Codecs.decode_jpegl(fixture("synthetic_ycc420.jpl"))
+
+      expected =
+        pattern(fn x, y ->
+          <<rem(x + 2 * y, 256), rem(64 + div(x, 2) * 2, 256),
+            Integer.mod(200 - div(y, 2) * 2, 256)>>
+        end)
+
+      assert decoded.pixels == expected
+    end
+
+    test "rejects baseline JPEG and truncated data" do
+      baseline = <<0xFF, 0xD8, 0xFF, 0xC0, 0, 11, 8, 0, 1, 0, 1, 1, 1, 0x11, 0>>
+      assert {:error, :not_lossless_jpeg} = Codecs.decode_jpegl(baseline)
+      assert {:error, :invalid_jpegl} = Codecs.decode_jpegl("junk")
+
+      data = fixture("synthetic_rgb.jpl")
+
+      for size <- 0..(byte_size(data) - 1)//13 do
+        assert {:error, _} = Codecs.decode_jpegl(binary_part(data, 0, size))
+      end
+    end
+  end
+
+  describe "decode_jp2/1" do
+    test "decodes a lossless greyscale JP2 file exactly" do
+      assert {:ok, %{width: 128, height: 96, channels: 1, colorspace: :gray} = decoded} =
+               Codecs.decode_jp2(fixture("synthetic_grey.jp2"))
+
+      assert decoded.pixels == ridges()
+    end
+
+    test "decodes a raw RGB codestream exactly" do
+      assert {:ok, %{channels: 3} = decoded} = Codecs.decode_jp2(fixture("synthetic_rgb.j2k"))
+      assert decoded.pixels == rgb()
+    end
+
+    test "scales 16-bit samples to 8 bits" do
+      assert {:ok, %{channels: 1} = decoded} = Codecs.decode_jp2(fixture("synthetic_grey16.jp2"))
+      assert decoded.pixels == pattern(&<<div(rem(&1 * 512 + &2 * 7, 65_536) * 255, 65_535)>>)
+    end
+
+    test "rejects invalid and truncated data" do
+      assert {:error, :invalid_jp2} = Codecs.decode_jp2("junk")
+
+      data = fixture("synthetic_grey.jp2")
+
+      for size <- 0..(byte_size(data) - 1)//11 do
+        assert {:error, _} = Codecs.decode_jp2(binary_part(data, 0, size))
+      end
+    end
+  end
+
+  describe "ycbcr_to_rgb/1" do
+    test "converts full-range YCbCr" do
+      assert {:ok, <<100, 100, 100, 254, 0, 0>>} =
+               Codecs.ycbcr_to_rgb(<<100, 128, 128, 76, 85, 255>>)
+
+      assert {:error, :invalid_dimensions} = Codecs.ycbcr_to_rgb(<<1, 2>>)
+    end
+  end
+
   describe "encode_png/4" do
     test "encodes greyscale and RGB pixels" do
       assert {:ok, <<@png_signature, _::binary>>} =
@@ -63,13 +150,14 @@ defmodule NistView.CodecsTest do
 
   describe "Imaging.displayable/1" do
     test "converts WSQ to PNG" do
-      image = %ImageRef{compression: :wsq, label: "WSQ20", data: @wsq}
+      image = %ImageRef{compression: :wsq, format: :wsq, label: "WSQ20", data: @wsq}
       assert {:ok, "image/png", <<@png_signature, _::binary>>} = Imaging.displayable(image)
     end
 
     test "converts uncompressed greyscale to PNG" do
       image = %ImageRef{
         compression: :raw,
+        format: :raw,
         label: "NONE",
         width: 2,
         height: 2,
@@ -82,20 +170,64 @@ defmodule NistView.CodecsTest do
 
     test "passes PNG and JPEG through unchanged" do
       assert {:ok, "image/png", "png"} =
-               Imaging.displayable(%ImageRef{compression: :png, label: "PNG", data: "png"})
+               Imaging.displayable(%ImageRef{
+                 compression: :png,
+                 format: :png,
+                 label: "PNG",
+                 data: "png"
+               })
 
       assert {:ok, "image/jpeg", "jpg"} =
-               Imaging.displayable(%ImageRef{compression: :jpegb, label: "JPEGB", data: "jpg"})
+               Imaging.displayable(%ImageRef{
+                 compression: :jpegb,
+                 format: :jpegb,
+                 label: "JPEGB",
+                 data: "jpg"
+               })
     end
 
-    test "reports codecs that are not supported yet" do
-      assert {:error, {:unsupported_compression, :jp2}} =
-               Imaging.displayable(%ImageRef{compression: :jp2, label: "JP2", data: <<>>})
+    test "decodes JPEG 2000 and lossless JPEG to PNG" do
+      for {format, name} <- [
+            jp2: "synthetic_grey.jp2",
+            jp2l: "synthetic_rgb.j2k",
+            jpegl: "synthetic_rgb.jpl"
+          ] do
+        image = %ImageRef{compression: format, format: format, label: "", data: fixture(name)}
+        assert {:ok, "image/png", <<@png_signature, _::binary>>} = Imaging.displayable(image)
+      end
+    end
+
+    test "converts YCbCr to RGB when the record's colour space says so" do
+      data = fixture("synthetic_ycc420.jpl")
+      image = %ImageRef{compression: :jpegl, format: :jpegl, label: "JPEGL", data: data}
+
+      assert {:ok, %{colorspace: :unspecified, pixels: ycc}} = Imaging.decode(image)
+
+      assert {:ok, %{colorspace: :srgb, pixels: rgb}} =
+               Imaging.decode(%{image | colorspace: "YCC"})
+
+      assert {:ok, ^rgb} = Codecs.ycbcr_to_rgb(ycc)
+    end
+
+    test "follows the detected format rather than the label" do
+      image = %ImageRef{compression: :jpegb, format: :wsq, label: "JPEGB", data: @wsq}
+      assert {:ok, "image/png", _} = Imaging.displayable(image)
+    end
+
+    test "reports codecs that are not supported" do
+      assert {:error, {:unsupported_compression, :unknown}} =
+               Imaging.displayable(%ImageRef{
+                 compression: :unknown,
+                 format: :unknown,
+                 label: "X",
+                 data: <<>>
+               })
     end
 
     test "rejects uncompressed data that does not fit its dimensions" do
       image = %ImageRef{
         compression: :raw,
+        format: :raw,
         label: "NONE",
         width: 2,
         height: 2,

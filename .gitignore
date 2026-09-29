@@ -42,3 +42,6 @@ npm-debug.log
 
 # Downloaded or restricted sample transactions (see `mix nist.samples`).
 /test/samples/
+
+# Editor swap files.
+*.swp

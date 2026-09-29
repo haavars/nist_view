@@ -90,7 +90,13 @@ defmodule NistView.MixProject do
         "esbuild nist_view --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "test",
+        "cmd --cd native/nist_codecs cargo test --release --quiet"
+      ]
     ]
   end
 end

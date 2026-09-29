@@ -4,11 +4,15 @@ defmodule NistView.ImageRef do
 
   `data` is a sub-binary of the original file. `compression` is the
   normalised codec (see `NistView.Compression`); `label` is what the file
-  actually said (the `.011` value, or the Type-4 GCA byte).
+  actually said (the `.011` value, or the Type-4 GCA byte). `format` is
+  what the data turned out to be (see `NistView.ImageFormat`), which
+  decoding follows; it equals `compression` unless the bytes disagree
+  with the label.
   """
 
   @type t :: %__MODULE__{
           compression: NistView.Compression.t(),
+          format: NistView.Compression.t(),
           label: String.t(),
           data: binary(),
           width: non_neg_integer() | nil,
@@ -18,5 +22,5 @@ defmodule NistView.ImageRef do
           colorspace: String.t() | nil
         }
 
-  defstruct [:compression, :label, :data, :width, :height, :ppi, :bit_depth, :colorspace]
+  defstruct [:compression, :format, :label, :data, :width, :height, :ppi, :bit_depth, :colorspace]
 end

@@ -131,7 +131,11 @@ defmodule Mix.Tasks.Nist.Dump do
     depth = if image.bit_depth, do: "  #{image.bit_depth}-bit", else: ""
     colour = if image.colorspace, do: "  #{image.colorspace}", else: ""
 
-    IO.puts("  image: #{image.compression} (#{image.label})#{size}#{ppi}#{depth}#{colour}")
+    actual = if image.format == image.compression, do: "", else: ", data is #{image.format}"
+
+    IO.puts(
+      "  image: #{image.compression} (#{image.label}#{actual})#{size}#{ppi}#{depth}#{colour}"
+    )
 
     if opts[:decode] || opts[:png] do
       case Imaging.displayable(image) do

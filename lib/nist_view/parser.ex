@@ -19,7 +19,7 @@ defmodule NistView.Parser do
   which were verified against real Prüm and BioCTS files.
   """
 
-  alias NistView.{Compression, Field, ImageRef, NistFile, Record}
+  alias NistView.{Compression, Field, ImageFormat, ImageRef, NistFile, Record}
 
   @fs 0x1C
   @gs <<0x1D>>
@@ -287,8 +287,11 @@ defmodule NistView.Parser do
   defp tagged_image(%Record{} = record) do
     with %Field{value: data} <- Record.field(record, 999),
          label when is_binary(label) <- Record.value(record, 11) do
+      compression = Compression.from_label(label)
+
       %ImageRef{
-        compression: Compression.from_label(label),
+        compression: compression,
+        format: format(compression, data),
         label: String.trim(label),
         data: data,
         width: integer(record.fields, 6),
@@ -308,6 +311,18 @@ defmodule NistView.Parser do
       {"1", ppi} when is_integer(ppi) -> ppi
       {"2", ppcm} when is_integer(ppcm) -> round(ppcm * 2.54)
       _ -> nil
+    end
+  end
+
+  # Uncompressed pixels could start with a signature by chance, so only a
+  # compressed label is overridden by what the bytes say.
+  defp format(:raw, _data), do: :raw
+
+  defp format(compression, data) do
+    case ImageFormat.detect(data) do
+      nil -> compression
+      :jp2 when compression == :jp2l -> :jp2l
+      detected -> detected
     end
   end
 
@@ -393,6 +408,7 @@ defmodule NistView.Parser do
 
     image = %ImageRef{
       compression: compression,
+      format: format(compression, data),
       label: label,
       data: data,
       width: hll,
