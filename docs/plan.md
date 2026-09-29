@@ -177,7 +177,7 @@ Codecs, in priority order:
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | Spike ✅ (BioCTS and phantom; Prüm samples still to run) | CLI (`mix nist.dump file.nst`) prints the record tree for the Prüm samples (including the all-Type-4 CPS file) and a phantom enrolment; one WSQ Type-4 image decodes to PNG |
-| M1 | Parser complete | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
+| M1 | Parser complete ✅ (Prüm samples still to run) | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
 | M2 | Codecs complete | WSQ, JPEGB, PNG and raw decode, with bit-exact WSQ results against NBIS `dwsq`. JPEGL and JP2/JP2L follow once a real file needs them |
 | M3 | Viewer UI | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
@@ -194,6 +194,15 @@ Codecs, in priority order:
 - A phantom-style enrolment built with phantom's own record builders (`test/fixtures/phantom_enrol.an2`, from `scripts/phantom_enrol.exs`) parses without warnings. phantom has no generated subjects on disk, so the images are synthetic.
 - Not yet run: the Prüm `.eml` samples (not on this machine).
 - Seen in the BioCTS set but not decodable yet: JP2 (12 images), JP2L (22) and JPEGL (2). This makes JPEG 2000 more likely to be needed in v1 than §2 assumed.
+
+**M1 status (2026-09-29).**
+- `NistView.Minutiae` decodes four Type-9 blocks: M1, legacy standard (9.005–9.012), FBI/IAFIS (9.014–9.023) and EFS. All four are normalised to millimetres plus an origin, with angles in the INCITS 378 convention.
+- The conventions were derived, not assumed. BioCTS encodes one print in three blocks; after normalisation they agree within 1 px and 1°, and a sample test covers this. Two conventions differ from M1:
+  - the legacy block's origin is bottom-left
+  - its angles are rotated 180°
+- EFS angles are assumed to match M1. No available file has EFS minutiae, and abis_next's writer is unverified here.
+- StreamData properties: generated transactions round-trip, and truncation, corruption and arbitrary bytes never raise.
+- Still to run: the Prüm samples, whose Type-9 is M1.
 
 ## 8. Open questions
 1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. Still open: do any files we need to view use JPEG 2000 (common at 1000 ppi) or JPEGL, or contain Type-17 iris?
