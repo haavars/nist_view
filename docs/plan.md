@@ -112,7 +112,7 @@ Codecs, in priority order:
   - NBIS prints errors to stderr; a force-included header routes them to a no-op.
   - The WSQ frame header is read in Rust first, so images over 100 megapixels are refused before NBIS allocates.
   - NBIS `exit()`s only when `malloc` fails.
-- Toolchain: the local Rust is 1.85, so rustler is pinned to 0.37 (0.38 needs 1.91), and release stripping is off, because the macOS 27 loader rejects dylibs stripped by that toolchain ("mis-aligned LINKEDIT string pool").
+- Toolchain: Rust 1.98.1 (global `~/.tool-versions` via mise) and rustler 0.38, which needs Rust 1.91 or later. Rust 1.85 produced dylibs that the macOS 27 loader rejected once stripped ("mis-aligned LINKEDIT string pool"); 1.98.1 does not.
 - JPEG 2000: `jpeg2k` with the default `openjpeg-sys` backend. Evaluate its optional pure-Rust `openjp2` backend to remove the C dependency.
 - Distribution: `rustler_precompiled` for release builds. For offline or air-gapped builds, compile from source (`RUSTLER_PRECOMPILED_FORCE_BUILD`) or point `base_url` at an internal artifact store.
 

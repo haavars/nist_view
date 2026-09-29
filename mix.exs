@@ -66,7 +66,7 @@ defmodule NistView.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:rustler, "~> 0.37.1", runtime: false}
+      {:rustler, "~> 0.38.0", runtime: false}
     ]
   end
 
