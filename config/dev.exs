@@ -70,6 +70,9 @@ config :nist_view, NistViewWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :nist_view, dev_routes: true
 
+# Lets the viewer open a local file with /?path=... during development.
+config :nist_view, open_path_param: true
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

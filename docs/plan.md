@@ -178,7 +178,7 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 | M0 | Spike ✅ (BioCTS and phantom; Prüm samples still to run) | CLI (`mix nist.dump file.nst`) prints the record tree for the Prüm samples (including the all-Type-4 CPS file) and a phantom enrolment; one WSQ Type-4 image decodes to PNG |
 | M1 | Parser complete ✅ (Prüm samples still to run) | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
-| M3 | Viewer UI | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
+| M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
 | M5 | Hardening | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 
@@ -217,6 +217,22 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 - **YCbCr:** converted to RGB in one place (`NistView.Imaging`), when the decoder reports sYCC or the record's colour space (10.012/17.013) says YCC or SYCC.
 - **Size limits:** every decoder reads dimensions from the header first (WSQ SOF, JPEG SOFn, J2K SIZ, JP2 `ihdr`) and refuses images over 100 megapixels.
 - **Tests:** sample tests pin SHA-256 hashes of `dwsq` and `opj_decompress` output and check that every image in all 96 BioCTS files displays. Synthetic lossless fixtures check exact pixels, including 16-bit scaling.
+
+**M3 status (2026-09-29).** `NistViewWeb.ViewerLive` at `/` (`mix phx.server`).
+- **Opening a file:** drag and drop or a file picker. `NistViewWeb.MemoryUploadWriter` keeps the upload in memory; LiveView's default writer would put it in a temporary file.
+- **Record tree:** type, position name, IDC and image summary for each record, arrow keys or `j`/`k` to move, parse errors and warnings in plain language.
+- **Fields panel:** field number, mnemonic, and every subfield with its items. There is a hex view of the whole record (file offsets, 4 KB pages) or of one binary field.
+- **Image viewer** (a colocated hook, all client-side):
+  - fit, 1:1, 2:1 and wheel zoom around the cursor, drag to pan
+  - invert, contrast, brightness and gamma (SVG filter)
+  - a pixel readout in pixels, millimetres and grey or RGB value
+  - keys `f 1 2 + - i r m`
+- **Minutiae overlay:** SVG from the Type-9 records with the same IDC. Endings, bifurcations and other minutiae are drawn with direction ticks, plus cores and deltas, a legend and a toggle.
+- **Tenprint card:** rolled 1–10 and plain 11–15, which select the record when clicked.
+- **Images** are rendered asynchronously and kept in `NistView.ImageStore`: ETS, random tokens, dropped when the LiveView exits. They are served from `/render/:token` with `cache-control: no-store`, so they don't end up in the browser's disk cache.
+- **Development only:** `/?path=/file.an2` opens a local file (`config :nist_view, open_path_param: true` in `dev.exs`).
+- **Checked:** by screenshot with headless Chrome on BioCTS files (M1 overlay, the Type-4 tenprint card, a 3300 × 4400 JPEG 2000 face, a truncated file, warnings) and by LiveView tests.
+- **Build note:** macOS 27 kills the standalone Tailwind 4.1.12 binary (exit 137) because its ad-hoc signature no longer matches. After `mix assets.setup`, run `codesign --force --sign - _build/tailwind-macos-arm64-4.1.12`.
 
 ## 8. Open questions
 1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. JPEG 2000 and JPEGL are now supported anyway. Still open: do the files we need to view contain Type-17 iris?

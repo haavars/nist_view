@@ -12,8 +12,7 @@ defmodule NistView.Application do
       NistView.Repo,
       {DNSCluster, query: Application.get_env(:nist_view, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: NistView.PubSub},
-      # Start a worker by calling: NistView.Worker.start_link(arg)
-      # {NistView.Worker, arg},
+      NistView.ImageStore,
       # Start to serve requests, typically the last entry
       NistViewWeb.Endpoint
     ]

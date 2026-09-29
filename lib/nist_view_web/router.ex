@@ -17,7 +17,8 @@ defmodule NistViewWeb.Router do
   scope "/", NistViewWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", ViewerLive
+    get "/render/:token", ImageController, :show
   end
 
   # Other scopes may use custom stacks.

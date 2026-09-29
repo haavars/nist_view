@@ -91,7 +91,13 @@
   --noise: 0;
 }
 
+/* A step between zinc-900 and zinc-950 for panels on the zinc-950 page. */
+@theme {
+  --color-zinc-925: oklch(17.6% 0.0055 285.85);
+}
+
 /* Add variants based on LiveView classes */
+@custom-variant phx-drop-target-active (.phx-drop-target-active&, .phx-drop-target-active &);
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
