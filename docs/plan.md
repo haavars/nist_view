@@ -178,7 +178,7 @@ Codecs, in priority order:
 |---|---|---|
 | M0 | Spike ✅ (BioCTS and phantom; Prüm samples still to run) | CLI (`mix nist.dump file.nst`) prints the record tree for the Prüm samples (including the all-Type-4 CPS file) and a phantom enrolment; one WSQ Type-4 image decodes to PNG |
 | M1 | Parser complete ✅ (Prüm samples still to run) | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
-| M2 | Codecs complete | WSQ, JPEGB, PNG and raw decode, with bit-exact WSQ results against NBIS `dwsq`. JPEGL and JP2/JP2L follow once a real file needs them |
+| M2 | Codecs complete (WSQ, PNG, JPEGB, raw ✅; JPEG 2000 and JPEGL open) | WSQ, JPEGB, PNG and raw decode, with bit-exact WSQ results against NBIS `dwsq`. JPEGL and JP2/JP2L follow once a real file needs them |
 | M3 | Viewer UI | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
 | M5 | Hardening | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
@@ -203,6 +203,11 @@ Codecs, in priority order:
 - EFS angles are assumed to match M1. No available file has EFS minutiae, and abis_next's writer is unverified here.
 - StreamData properties: generated transactions round-trip, and truncation, corruption and arbitrary bytes never raise.
 - Still to run: the Prüm samples, whose Type-9 is M1.
+
+**M2 status (2026-09-29).**
+- WSQ: all 47 distinct WSQ images in the BioCTS set decode bit-identically to NBIS 5.0.0 `dwsq`, built from the same release. A sample test pins two SHA-256 hashes.
+- PNG and JPEGB are passed to the webview, and uncompressed 8-bit greyscale and RGB are converted to PNG.
+- Open: JP2/JP2L (34 BioCTS images) and JPEGL (2). See open question 1.
 
 ## 8. Open questions
 1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. Still open: do any files we need to view use JPEG 2000 (common at 1000 ppi) or JPEGL, or contain Type-17 iris?

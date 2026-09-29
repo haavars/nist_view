@@ -129,4 +129,23 @@ defmodule NistView.BioctsSampleTest do
       end
     end
   end
+
+  # SHA-256 of NBIS 5.0.0 `dwsq -raw_out` output for these images. All 47
+  # distinct WSQ images in the set were compared bit for bit on 2026-09-29.
+  @dwsq_sha256 [
+    {"pass-type-4-tpcard.an2", 1,
+     "2f90d78455d8e23dc2975688d085fba70a067995d5b0a725a57ba6996d7e35dd"},
+    {"pass-type-14-mandatory-only.an2", 0,
+     "68d14981dcea908214713affbd423840ba089dfb574d194bd0a4f356cff74f6a"}
+  ]
+
+  test "WSQ decoding is bit-identical to NBIS dwsq" do
+    for {name, idc, sha} <- @dwsq_sha256 do
+      record =
+        name |> parse!() |> Map.fetch!(:records) |> Enum.find(&(&1.idc == idc and &1.image))
+
+      assert {:ok, %{pixels: pixels}} = Imaging.decode(record.image)
+      assert Base.encode16(:crypto.hash(:sha256, pixels), case: :lower) == sha, name
+    end
+  end
 end
