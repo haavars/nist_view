@@ -1,10 +1,11 @@
 defmodule NistView.Codecs do
   @moduledoc """
-  Image codecs implemented in Rust (`native/nist_codecs`). Every function
-  runs on a dirty CPU scheduler.
+  PNG encoding and colour conversion in Rust (`native/nist_codecs`), on
+  dirty CPU schedulers. Both are safe Rust; the C image decoders run out of
+  process instead (`NistView.Decoder`).
 
-  Decoders return `{:ok, %{width, height, channels, bit_depth, ppi,
-  colorspace, pixels}}`, where `pixels` is 8-bit, row-major, `channels`
+  A decoded image is `%{width, height, channels, bit_depth, ppi,
+  colorspace, pixels}`, where `pixels` is 8-bit, row-major, `channels`
   bytes per pixel, and `colorspace` is what the decoder knows: `:gray`,
   `:srgb`, `:sycc` (not yet converted) or `:unspecified`. `ppi` is nil
   when the data does not say.
@@ -21,18 +22,6 @@ defmodule NistView.Codecs do
           colorspace: :gray | :srgb | :sycc | :unspecified,
           pixels: binary()
         }
-
-  @doc "Decodes a WSQ image with the vendored NBIS decoder."
-  @spec decode_wsq(binary()) :: {:ok, decoded()} | {:error, atom()}
-  def decode_wsq(_data), do: :erlang.nif_error(:nif_not_loaded)
-
-  @doc "Decodes a lossless JPEG (SOF3) image with the vendored NBIS decoder."
-  @spec decode_jpegl(binary()) :: {:ok, decoded()} | {:error, atom()}
-  def decode_jpegl(_data), do: :erlang.nif_error(:nif_not_loaded)
-
-  @doc "Decodes a JPEG 2000 file or codestream with OpenJPEG, scaled to 8 bits."
-  @spec decode_jp2(binary()) :: {:ok, decoded()} | {:error, atom()}
-  def decode_jp2(_data), do: :erlang.nif_error(:nif_not_loaded)
 
   @doc "Converts interleaved full-range YCbCr pixels to RGB."
   @spec ycbcr_to_rgb(binary()) :: {:ok, binary()} | {:error, atom()}

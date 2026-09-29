@@ -8,7 +8,7 @@ defmodule NistView.Imaging do
   in memory. Nothing is written to disk.
   """
 
-  alias NistView.{Codecs, ImageRef}
+  alias NistView.{Codecs, Decoder, ImageRef}
 
   @type displayable :: {:ok, mime :: String.t(), bytes :: binary()} | {:error, term()}
 
@@ -40,11 +40,11 @@ defmodule NistView.Imaging do
     end
   end
 
-  defp decode_format(%ImageRef{format: :wsq, data: data}), do: Codecs.decode_wsq(data)
-  defp decode_format(%ImageRef{format: :jpegl, data: data}), do: Codecs.decode_jpegl(data)
+  defp decode_format(%ImageRef{format: :wsq, data: data}), do: Decoder.decode(:wsq, data)
+  defp decode_format(%ImageRef{format: :jpegl, data: data}), do: Decoder.decode(:jpegl, data)
 
   defp decode_format(%ImageRef{format: format, data: data}) when format in [:jp2, :jp2l],
-    do: Codecs.decode_jp2(data)
+    do: Decoder.decode(:jp2, data)
 
   defp decode_format(%ImageRef{format: :raw, width: w, height: h, data: data} = image)
        when is_integer(w) and w > 0 and is_integer(h) and h > 0 do

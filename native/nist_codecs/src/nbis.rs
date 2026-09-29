@@ -1,6 +1,6 @@
-//! WSQ and lossless JPEG through the vendored NBIS decoders.
+//! WSQ through the vendored NBIS decoder. (Lossless JPEG is `crate::jpegl`.)
 
-use crate::{check_dimensions, headers, Error, Pixels};
+use crate::{check_dimensions, headers, ColorSpace, Error, Pixels};
 use std::os::raw::{c_int, c_uchar, c_void};
 use std::sync::Mutex;
 
@@ -16,27 +16,18 @@ extern "C" {
         ilen: c_int,
     ) -> c_int;
 
-    fn nist_codecs_jpegl_decode(
-        idata: *mut c_uchar,
-        ilen: c_int,
-        odata: *mut *mut c_uchar,
-        ow: *mut c_int,
-        oh: *mut c_int,
-        ochannels: *mut c_int,
-        oppi: *mut c_int,
-    ) -> c_int;
 
     fn free(ptr: *mut c_void);
 }
 
 /// NBIS keeps the WSQ decoder's tables in global variables, so only one
-/// WSQ decode may run at a time. The lossless JPEG decoder has no globals.
+/// WSQ decode may run at a time.
 static WSQ_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn decode_wsq(data: &[u8]) -> Result<Pixels, Error> {
-    let (width, height) = headers::wsq(data).ok_or(crate::atoms::invalid_wsq())?;
+    let (width, height) = headers::wsq(data).ok_or(Error::InvalidWsq)?;
     check_dimensions(width, height)?;
-    let len = c_int::try_from(data.len()).map_err(|_| crate::atoms::too_large())?;
+    let len = c_int::try_from(data.len()).map_err(|_| Error::TooLarge)?;
 
     // NBIS takes a mutable pointer, although it only reads the input.
     let mut input = data.to_vec();
@@ -60,53 +51,14 @@ pub fn decode_wsq(data: &[u8]) -> Result<Pixels, Error> {
     };
 
     // NBIS always returns 8-bit greyscale.
-    let pixels = take_c_buffer(ret, out, w, h, 1).ok_or(crate::atoms::invalid_wsq())?;
+    let pixels = take_c_buffer(ret, out, w, h, 1).ok_or(Error::InvalidWsq)?;
 
     Ok(Pixels {
         width: w as u32,
         height: h as u32,
         channels: 1,
         ppi: positive(ppi),
-        colorspace: crate::atoms::gray(),
-        data: pixels,
-    })
-}
-
-pub fn decode_jpegl(data: &[u8]) -> Result<Pixels, Error> {
-    match headers::jpeg(data) {
-        Some((0xC3, width, height)) => check_dimensions(width, height)?,
-        Some(_) => return Err(crate::atoms::not_lossless_jpeg()),
-        None => return Err(crate::atoms::invalid_jpegl()),
-    }
-
-    let len = c_int::try_from(data.len()).map_err(|_| crate::atoms::too_large())?;
-    let mut input = data.to_vec();
-    let (mut out, mut w, mut h, mut channels, mut ppi) = (std::ptr::null_mut(), 0, 0, 0, 0);
-
-    let ret = unsafe {
-        nist_codecs_jpegl_decode(
-            input.as_mut_ptr(),
-            len,
-            &mut out,
-            &mut w,
-            &mut h,
-            &mut channels,
-            &mut ppi,
-        )
-    };
-
-    let pixels = take_c_buffer(ret, out, w, h, channels).ok_or(crate::atoms::invalid_jpegl())?;
-
-    Ok(Pixels {
-        width: w as u32,
-        height: h as u32,
-        channels: channels as u32,
-        ppi: positive(ppi),
-        colorspace: if channels == 1 {
-            crate::atoms::gray()
-        } else {
-            crate::atoms::unspecified()
-        },
+        colorspace: ColorSpace::Gray,
         data: pixels,
     })
 }

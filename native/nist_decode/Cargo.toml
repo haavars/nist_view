@@ -1,0 +1,16 @@
+[package]
+name = "nist_decode"
+version = "0.1.0"
+edition = "2021"
+description = "Decodes images for NistView outside the BEAM (see NistView.Decoder)"
+
+[[bin]]
+name = "nist_decode"
+path = "src/main.rs"
+
+[dependencies]
+nist_codecs = { path = "../nist_codecs", default-features = false }
+
+[profile.release]
+# A bug in a C decoder should end this process, not continue on corrupted state.
+panic = "abort"

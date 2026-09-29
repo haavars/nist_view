@@ -1,7 +1,7 @@
 defmodule NistView.CodecsTest do
   use ExUnit.Case, async: true
 
-  alias NistView.{Codecs, ImageRef, Imaging}
+  alias NistView.{Codecs, Decoder, ImageRef, Imaging}
 
   @wsq File.read!("test/fixtures/synthetic.wsq")
   @png_signature <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A>>
@@ -9,9 +9,9 @@ defmodule NistView.CodecsTest do
   # The pattern in synthetic.wsq (see test/fixtures/README.md).
   defp expected_pixel(x, y), do: trunc(128 + 90 * :math.sin(x / 2.5) * :math.cos(y / 3.5))
 
-  describe "decode_wsq/1" do
+  describe "Decoder.decode(:wsq, _)" do
     test "decodes the synthetic image close to its source pattern" do
-      assert {:ok, decoded} = Codecs.decode_wsq(@wsq)
+      assert {:ok, decoded} = Decoder.decode(:wsq, @wsq)
       assert %{width: 128, height: 96, channels: 1, bit_depth: 8, ppi: 500} = decoded
       assert byte_size(decoded.pixels) == 128 * 96
 
@@ -25,13 +25,13 @@ defmodule NistView.CodecsTest do
     end
 
     test "rejects data that is not WSQ" do
-      assert {:error, :invalid_wsq} = Codecs.decode_wsq("not wsq")
-      assert {:error, :invalid_wsq} = Codecs.decode_wsq(<<>>)
+      assert {:error, :invalid_wsq} = Decoder.decode(:wsq, "not wsq")
+      assert {:error, :invalid_wsq} = Decoder.decode(:wsq, <<>>)
     end
 
     test "rejects every truncation of a valid image without crashing" do
       for size <- 0..(byte_size(@wsq) - 1)//7 do
-        assert {:error, _} = Codecs.decode_wsq(binary_part(@wsq, 0, size))
+        assert {:error, _} = Decoder.decode(:wsq, binary_part(@wsq, 0, size))
       end
     end
 
@@ -41,7 +41,7 @@ defmodule NistView.CodecsTest do
       <<before::binary-size(pos + 6), _::32, rest::binary>> = @wsq
 
       assert {:error, :too_large} =
-               Codecs.decode_wsq(<<before::binary, 0xFFFF::16, 0xFFFF::16, rest::binary>>)
+               Decoder.decode(:wsq, <<before::binary, 0xFFFF::16, 0xFFFF::16, rest::binary>>)
     end
   end
 
@@ -54,23 +54,23 @@ defmodule NistView.CodecsTest do
   defp ridges, do: pattern(&<<expected_pixel(&1, &2)>>)
   defp rgb, do: pattern(&<<rem(&1 * 2, 256), rem(&2 * 2, 256), rem(&1 + &2, 256)>>)
 
-  describe "decode_jpegl/1" do
+  describe "Decoder.decode(:jpegl, _)" do
     test "decodes greyscale exactly" do
-      assert {:ok, decoded} = Codecs.decode_jpegl(fixture("synthetic_grey.jpl"))
+      assert {:ok, decoded} = Decoder.decode(:jpegl, fixture("synthetic_grey.jpl"))
       assert %{width: 128, height: 96, channels: 1, ppi: 500, colorspace: :gray} = decoded
       assert decoded.pixels == ridges()
     end
 
     test "decodes interleaved RGB exactly" do
       assert {:ok, %{channels: 3, colorspace: :unspecified} = decoded} =
-               Codecs.decode_jpegl(fixture("synthetic_rgb.jpl"))
+               Decoder.decode(:jpegl, fixture("synthetic_rgb.jpl"))
 
       assert decoded.pixels == rgb()
     end
 
     test "upsamples subsampled components by replication" do
       assert {:ok, %{width: 128, height: 96, channels: 3} = decoded} =
-               Codecs.decode_jpegl(fixture("synthetic_ycc420.jpl"))
+               Decoder.decode(:jpegl, fixture("synthetic_ycc420.jpl"))
 
       expected =
         pattern(fn x, y ->
@@ -83,42 +83,44 @@ defmodule NistView.CodecsTest do
 
     test "rejects baseline JPEG and truncated data" do
       baseline = <<0xFF, 0xD8, 0xFF, 0xC0, 0, 11, 8, 0, 1, 0, 1, 1, 1, 0x11, 0>>
-      assert {:error, :not_lossless_jpeg} = Codecs.decode_jpegl(baseline)
-      assert {:error, :invalid_jpegl} = Codecs.decode_jpegl("junk")
+      assert {:error, :not_lossless_jpeg} = Decoder.decode(:jpegl, baseline)
+      assert {:error, :invalid_jpegl} = Decoder.decode(:jpegl, "junk")
 
       data = fixture("synthetic_rgb.jpl")
 
       for size <- 0..(byte_size(data) - 1)//13 do
-        assert {:error, _} = Codecs.decode_jpegl(binary_part(data, 0, size))
+        assert {:error, _} = Decoder.decode(:jpegl, binary_part(data, 0, size))
       end
     end
   end
 
-  describe "decode_jp2/1" do
+  describe "Decoder.decode(:jp2, _)" do
     test "decodes a lossless greyscale JP2 file exactly" do
       assert {:ok, %{width: 128, height: 96, channels: 1, colorspace: :gray} = decoded} =
-               Codecs.decode_jp2(fixture("synthetic_grey.jp2"))
+               Decoder.decode(:jp2, fixture("synthetic_grey.jp2"))
 
       assert decoded.pixels == ridges()
     end
 
     test "decodes a raw RGB codestream exactly" do
-      assert {:ok, %{channels: 3} = decoded} = Codecs.decode_jp2(fixture("synthetic_rgb.j2k"))
+      assert {:ok, %{channels: 3} = decoded} = Decoder.decode(:jp2, fixture("synthetic_rgb.j2k"))
       assert decoded.pixels == rgb()
     end
 
     test "scales 16-bit samples to 8 bits" do
-      assert {:ok, %{channels: 1} = decoded} = Codecs.decode_jp2(fixture("synthetic_grey16.jp2"))
+      assert {:ok, %{channels: 1} = decoded} =
+               Decoder.decode(:jp2, fixture("synthetic_grey16.jp2"))
+
       assert decoded.pixels == pattern(&<<div(rem(&1 * 512 + &2 * 7, 65_536) * 255, 65_535)>>)
     end
 
     test "rejects invalid and truncated data" do
-      assert {:error, :invalid_jp2} = Codecs.decode_jp2("junk")
+      assert {:error, :invalid_jp2} = Decoder.decode(:jp2, "junk")
 
       data = fixture("synthetic_grey.jp2")
 
       for size <- 0..(byte_size(data) - 1)//11 do
-        assert {:error, _} = Codecs.decode_jp2(binary_part(data, 0, size))
+        assert {:error, _} = Decoder.decode(:jp2, binary_part(data, 0, size))
       end
     end
   end

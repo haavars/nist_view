@@ -1,0 +1,44 @@
+[package]
+name = "nist_codecs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+nist_codecs = { path = "..", default-features = false }
+
+# Not part of any parent workspace.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "wsq"
+path = "fuzz_targets/wsq.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jpegl"
+path = "fuzz_targets/jpegl.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jp2"
+path = "fuzz_targets/jp2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "headers"
+path = "fuzz_targets/headers.rs"
+test = false
+doc = false
+bench = false

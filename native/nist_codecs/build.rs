@@ -35,7 +35,7 @@ fn main() {
         build.files(files);
     }
 
-    build.file("c/glue.c").file("c/jpegl_glue.c");
+    build.file("c/glue.c");
     build.compile("nbis");
 
     println!("cargo:rerun-if-changed=vendor/nbis");

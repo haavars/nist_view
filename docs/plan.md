@@ -4,6 +4,8 @@ A cross-platform desktop viewer for ANSI/NIST-ITL transaction files (`.nst`, `.a
 
 Stack: **Elixir/Phoenix LiveView** for the UI and parsing, **one Rust NIF** for image codecs, and **Tauri + ElixirKit** as the desktop shell.
 
+Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log).
+
 ---
 
 ## 1. Goals and non-goals
@@ -100,20 +102,20 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 - Parsing is total: malformed input gives `{:error, {offset, reason}}` along with whatever records were parsed up to that point, so the UI can still show a partial file.
 - *Built in M0* (`NistView.Parser`): problems that don't break framing are warnings on the file instead of errors. These are a CNT type or IDC mismatch, a malformed field (the rest of that record is dropped), trailing bytes, and a binary record shorter than its header. Checked against all 96 BioCTS files.
 
-### 3.2 Codecs (`nist_codecs` Rust NIF)
-- API (all run on dirty CPU schedulers), as built in M0 (`NistView.Codecs`):
-  - `decode_wsq/1`, `decode_jpegl/1`, `decode_jp2/1 :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. `NistView.Imaging` dispatches on the detected format.
-  - `ycbcr_to_rgb(pixels) :: {:ok, binary}`
-  - `encode_png(pixels, width, height, channels) :: {:ok, binary} | {:error, reason}`
-- WSQ and JPEGL come from vendored NBIS sources (public domain), compiled via `cc` in `build.rs`: 27 files from NBIS 5.0.0 (`native/nist_codecs/vendor/nbis/README.md`). Findings:
+### 3.2 Codecs (`nist_codecs`, `nist_decode`)
+Revised in M5; details in [architecture.md](architecture.md#images).
+- **Rust library** `native/nist_codecs`: the decoders, header readers and PNG encoding. Its NIF (`NistView.Codecs`, behind the default `nif` feature) exposes only safe Rust: `encode_png/4` and `ycbcr_to_rgb/1`.
+- **Decoding runs out of process**, in the `nist_decode` helper (`native/nist_decode`, built by the `:nist_decode` Mix compiler), one process per image through `NistView.Decoder`: `decode(:wsq | :jpegl | :jp2, bytes) :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. Crashes and timeouts become errors.
+- **WSQ:** vendored NBIS 5.0.0 (23 files, patched; `vendor/nbis/README.md`).
   - `__NBISLE__` must be defined on little-endian targets.
-  - The WSQ decoder keeps its tables in globals, so calls are serialised with a mutex.
-  - NBIS prints errors to stderr; a force-included header routes them to a no-op.
-  - The WSQ frame header is read in Rust first, so images over 100 megapixels are refused before NBIS allocates.
-  - NBIS `exit()`s only when `malloc` fails.
-- Toolchain: Rust 1.98.1 (global `~/.tool-versions` via mise) and rustler 0.38, which needs Rust 1.91 or later. Rust 1.85 produced dylibs that the macOS 27 loader rejected once stripped ("mis-aligned LINKEDIT string pool"); 1.98.1 does not.
-- JPEG 2000: `jpeg2k` with the default `openjpeg-sys` backend. Evaluate its optional pure-Rust `openjp2` backend to remove the C dependency.
-- Distribution: `rustler_precompiled` for release builds. For offline or air-gapped builds, compile from source (`RUSTLER_PRECOMPILED_FORCE_BUILD`) or point `base_url` at an internal artifact store.
+  - Its globals need a mutex.
+  - `fprintf` is silenced.
+  - Output is bit-identical to `dwsq`.
+- **Lossless JPEG:** our own safe-Rust decoder (`src/jpegl.rs`). NBIS's decoder had many memory bugs and was removed. libjpeg-turbo 3.2 is the reference for testing (dev-only).
+- **JPEG 2000:** `jpeg2k` with the bundled OpenJPEG, and our own 8-bit conversion. Output is bit-identical to `opj_decompress`. Its pure-Rust `openjp2` backend could remove this C dependency later.
+- Every decoder reads the header first and refuses images over 100 megapixels.
+- **Toolchain:** Rust 1.98.1 and Rustler 0.38 (`.tool-versions`).
+- **Distribution:** built from source for now. Consider `rustler_precompiled` later; for offline builds, compile from source or use an internal artefact store.
 
 ### 3.3 UI (LiveView)
 - Left pane: record tree (Type → IDC → fields), with the field number, mnemonic name and value.
@@ -133,11 +135,12 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 ---
 
 ## 4. Security and data handling
-- No network access beyond loopback. No telemetry, no crash-report upload, no auto-update in restricted builds.
-- Untrusted input: C codecs (NBIS, OpenJPEG) run on attacker-controllable data, and a segfault in a NIF takes down the whole BEAM.
-  - v1: bounds-check headers in Elixir before calling the NIF (dimensions, lengths), and cap maximum pixel count.
-  - Hardening option: move the codecs out of process, into a small Rust CLI run via an Erlang Port or as a Tauri sidecar. A crash then kills only the decoder. Decide after fuzzing (M5).
-- Logs contain no field values from Type-2 and no image bytes.
+Details, fuzzing results and open items: [security.md](security.md).
+- No network access beyond loopback. No telemetry, no crash-report upload, no auto-update.
+- Files and rendered images stay in memory: in-memory uploads, an ETS image store owned by the viewer, `no-store` responses. Nothing is written to disk.
+- Local access is gated by a per-launch token; the server binds to loopback only; the CSP is strict.
+- **Untrusted input.** Decided in M5, after fuzzing found a memory error in NBIS WSQ within a minute: C decoders run out of process (`nist_decode`), and no C code runs in the BEAM. Next: sandbox the helper.
+- Logs contain no field values from Type-2 and no image bytes. Redacting crash reports is still open.
 
 ---
 
@@ -180,7 +183,8 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
 
@@ -208,7 +212,7 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 - **JPEG 2000:** `jpeg2k` 0.10 with the bundled OpenJPEG. All 12 distinct JP2/JP2L images in BioCTS decode bit-identically to `opj_decompress` 2.5.4. They are all 8-bit greyscale or sRGB.
   - Components are converted to 8-bit by our own code, not the crate's `get_pixels`. This handles signed samples, precisions above 8 bits (scaled), subsampled components (replicated) and sYCC.
   - CMYK and e-sYCC are refused.
-- **Lossless JPEG:** the NBIS `jpegl` decoder, vendored like WSQ, plus a C wrapper that interleaves and upsamples the component planes.
+- **Lossless JPEG:** the NBIS `jpegl` decoder, vendored like WSQ, plus a C wrapper that interleaves and upsamples the component planes. *(Replaced in M5 by a safe-Rust decoder after fuzzing found memory errors; see M5 status.)*
   - BioCTS has no real lossless JPEG. Its two `JPEGL` records hold baseline JPEG.
   - Coverage comes from synthetic fixtures made with NBIS `cjpegl`: greyscale, RGB and 4:2:0 YCbCr, all decoded exactly.
 - **Format detection:** `NistView.ImageFormat` reads the data's signature, and decoding follows the bytes, not the label.
@@ -259,6 +263,27 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
   - The CI workflow (`.github/workflows/desktop.yml`, five targets through `tauri-action`) has never run.
   - Windows is the biggest risk: the vendored NBIS C sources have not been compiled with MSVC.
   - The file association flow is untested on a real double-click; it needs the app installed.
+
+**M5 status (2026-09-29, in progress).** Full details: [security.md](security.md), [fuzzing.md](fuzzing.md).
+- **Fuzzing:** cargo-fuzz targets for WSQ, lossless JPEG, JPEG 2000 and the header readers, with AddressSanitizer on the C code too (`native/nist_codecs/fuzz`).
+  - NBIS WSQ: one stack overflow, patched; clean afterwards.
+  - NBIS lossless JPEG: many heap and stack overflows, a use-after-free and segfaults.
+  - OpenJPEG and the Rust code: no crashes.
+- **Decision:** decode out of process. The `nist_decode` helper runs one process per image with a timeout. The NIF has no C left.
+- **Lossless JPEG:** a new safe-Rust decoder replaces NBIS.
+  - Pixel-identical on the fixtures, which libjpeg-turbo 3.2 also decodes identically.
+  - 4.8 million fuzz inputs without a crash.
+  - NBIS-produced files need the table-class quirk handled (see [formats.md](formats.md)).
+- **Security review:** the controls in place are documented and checked on the built release.
+- **Still to do** (see [security.md](security.md#open-items)):
+  - the libjpeg-turbo differential fuzz target
+  - longer fuzz runs
+  - minimised regression inputs
+  - a sandbox for the helper
+  - authentication for PubSub `ready:`
+  - redacted crash reports
+  - validation of client events
+  - Developer ID signing and notarization, and Windows signing (need certificates)
 
 ## 8. Open questions
 1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. JPEG 2000 and JPEGL are now supported anyway. Still open: do the files we need to view contain Type-17 iris?

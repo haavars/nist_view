@@ -199,6 +199,11 @@ defmodule NistView.Viewer do
     do: "#{size} bytes do not fit #{w}×#{h} at #{inspect(depth)} bits per pixel"
 
   def describe(:too_large), do: "image is larger than 100 megapixels"
+
+  def describe(:decoder_crashed),
+    do: "the decoder crashed on this image (the data is probably corrupt)"
+
+  def describe(:decoder_timeout), do: "decoding took too long and was stopped"
   def describe(:unsupported_colorspace), do: "unsupported colour space"
   def describe(:not_lossless_jpeg), do: "data is not lossless JPEG"
 

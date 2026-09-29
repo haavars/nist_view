@@ -736,6 +736,10 @@ int decode_data_mem(
    }
 
    for(inx = 1; (int)code > maxcode[inx]; inx++) {
+      /* nist_view: codes are at most MAX_HUFFBITS long; a corrupt table
+         otherwise walks past maxcode[] (found by fuzzing). */
+      if(inx >= MAX_HUFFBITS)
+         return(-100);
       if((ret = getc_nextbits_wsq(&tbits, marker, cbufptr, ebufptr, bit_count, 1)))
          return(ret);
 
@@ -747,6 +751,10 @@ int decode_data_mem(
    }
    inx2 = valptr[inx];
    inx2 = inx2 + code - mincode[inx];
+
+   /* nist_view: huffvalues holds MAX_HUFFCOUNTS_WSQ+1 entries. */
+   if(inx2 < 0 || inx2 > MAX_HUFFCOUNTS_WSQ)
+      return(-101);
 
    *onodeptr = huffvalues[inx2];
    return(0);
@@ -794,6 +802,10 @@ int decode_data_file(
    }
    inx2 = valptr[inx];
    inx2 = inx2 + code - mincode[inx];
+
+   /* nist_view: huffvalues holds MAX_HUFFCOUNTS_WSQ+1 entries. */
+   if(inx2 < 0 || inx2 > MAX_HUFFCOUNTS_WSQ)
+      return(-101);
 
    *onodeptr = huffvalues[inx2];
    return(0);

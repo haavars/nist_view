@@ -10,7 +10,8 @@ defmodule NistView.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      # :nist_decode builds the out-of-process image decoder (NistView.Decoder).
+      compilers: [:phoenix_live_view] ++ Mix.compilers() ++ [:nist_decode],
       listeners: [Phoenix.CodeReloader],
       releases: releases()
     ]
