@@ -176,7 +176,7 @@ Codecs, in priority order:
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Spike ✅ (BioCTS; Prüm and phantom files still to run) | CLI (`mix nist.dump file.nst`) prints the record tree for the Prüm samples (including the all-Type-4 CPS file) and a phantom enrolment; one WSQ Type-4 image decodes to PNG |
+| M0 | Spike ✅ (BioCTS and phantom; Prüm samples still to run) | CLI (`mix nist.dump file.nst`) prints the record tree for the Prüm samples (including the all-Type-4 CPS file) and a phantom enrolment; one WSQ Type-4 image decodes to PNG |
 | M1 | Parser complete | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
 | M2 | Codecs complete | WSQ, JPEGB, PNG and raw decode, with bit-exact WSQ results against NBIS `dwsq`. JPEGL and JP2/JP2L follow once a real file needs them |
 | M3 | Viewer UI | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
@@ -191,9 +191,8 @@ Codecs, in priority order:
   - All 96 BioCTS files parse, including three all-Type-4 tenprint cards.
   - All 134 WSQ images in them decode through the NIF.
   - 43 tests; the BioCTS suite is skipped when the samples are missing.
-- Not yet run:
-  - the Prüm `.eml` samples (not on this machine)
-  - a phantom enrolment export
+- A phantom-style enrolment built with phantom's own record builders (`test/fixtures/phantom_enrol.an2`, from `scripts/phantom_enrol.exs`) parses without warnings. phantom has no generated subjects on disk, so the images are synthetic.
+- Not yet run: the Prüm `.eml` samples (not on this machine).
 - Seen in the BioCTS set but not decodable yet: JP2 (12 images), JP2L (22) and JPEGL (2). This makes JPEG 2000 more likely to be needed in v1 than §2 assumed.
 
 ## 8. Open questions
