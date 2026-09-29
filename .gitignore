@@ -35,3 +35,10 @@ nist_view-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Rust build output and the compiled NIF.
+/native/nist_codecs/target/
+/priv/native/
+
+# Downloaded or restricted sample transactions (see `mix nist.samples`).
+/test/samples/
