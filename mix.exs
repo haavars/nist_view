@@ -11,7 +11,8 @@ defmodule NistView.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: releases()
     ]
   end
 
@@ -27,7 +28,7 @@ defmodule NistView.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, "desktop.release": :prod]
     ]
   end
 
@@ -41,9 +42,6 @@ defmodule NistView.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.8.7"},
-      {:phoenix_ecto, "~> 4.5"},
-      {:ecto_sql, "~> 3.13"},
-      {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.1.0"},
@@ -59,15 +57,25 @@ defmodule NistView.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:rustler, "~> 0.38.0", runtime: false}
+      {:rustler, "~> 0.38.0", runtime: false},
+      {:elixirkit, github: "livebook-dev/elixirkit"}
+    ]
+  end
+
+  # The release the desktop shell bundles (see src-tauri). On macOS every
+  # executable in it is signed, with APPLE_SIGNING_IDENTITY or ad hoc.
+  defp releases do
+    [
+      nist_view: [
+        steps: [:assemble, &ElixirKit.Release.codesign/1],
+        entitlements: Path.expand("src-tauri/App.entitlements", __DIR__)
+      ]
     ]
   end
 
@@ -79,16 +87,19 @@ defmodule NistView.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
-      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind nist_view", "esbuild nist_view"],
       "assets.deploy": [
         "tailwind nist_view --minify",
         "esbuild nist_view --minify",
         "phx.digest"
+      ],
+      # Run by `cargo tauri build` (src-tauri/tauri.conf.json).
+      "desktop.release": [
+        "compile",
+        "assets.deploy",
+        "release nist_view --overwrite --path src-tauri/target/rel"
       ],
       precommit: [
         "compile --warnings-as-errors",

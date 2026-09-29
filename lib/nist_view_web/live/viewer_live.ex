@@ -21,7 +21,7 @@ defmodule NistViewWeb.ViewerLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "Open a file", generation: 0)
+     |> assign(page_title: "Open a file", generation: 0, pending_open: nil)
      |> reset_file()
      |> allow_upload(:transaction,
        accept: :any,
@@ -59,23 +59,49 @@ defmodule NistViewWeb.ViewerLive do
 
   # -- Opening a file ----------------------------------------------------------
 
-  # Development only (see config/dev.exs): /?path=/some/file.an2
+  # A file the desktop shell was asked to open (see NistView.Desktop).
   @impl true
-  def handle_params(%{"path" => path}, _uri, socket) do
-    if connected?(socket) and Application.get_env(:nist_view, :open_path_param, false) do
-      case File.read(path) do
-        {:ok, data} ->
-          {:noreply, open_file(socket, Path.basename(path), data)}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Could not read #{path}: #{reason}")}
+  def handle_params(%{"open" => id}, _uri, socket) do
+    if connected?(socket) do
+      case NistView.Desktop.take(id) do
+        {:ok, path} -> {:noreply, open_path(socket, path)}
+        :pending -> {:noreply, assign(socket, pending_open: id)}
       end
     else
       {:noreply, socket}
     end
   end
 
+  # Development only (see config/dev.exs): /?path=/some/file.an2
+  def handle_params(%{"path" => path}, _uri, socket) do
+    if connected?(socket) and Application.get_env(:nist_view, :open_path_param, false),
+      do: {:noreply, open_path(socket, path)},
+      else: {:noreply, socket}
+  end
+
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:desktop_open, id, path}, %{assigns: %{pending_open: id}} = socket) do
+    NistView.Desktop.discard(id)
+    {:noreply, socket |> assign(pending_open: nil) |> open_path(path)}
+  end
+
+  def handle_info({:desktop_open, _id, _path}, socket), do: {:noreply, socket}
+
+  defp open_path(socket, path) do
+    case File.read(path) do
+      {:ok, data} ->
+        open_file(socket, Path.basename(path), data)
+
+      {:error, reason} ->
+        put_flash(
+          socket,
+          :error,
+          "Could not read #{Path.basename(path)}: #{:file.format_error(reason)}"
+        )
+    end
+  end
 
   defp handle_progress(:transaction, entry, socket) do
     if entry.done? do

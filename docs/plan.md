@@ -179,7 +179,7 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 | M1 | Parser complete ✅ (Prüm samples still to run) | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
-| M4 | Desktop packaging | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
+| M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
 | M5 | Hardening | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 
 ---
@@ -233,6 +233,32 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 - **Development only:** `/?path=/file.an2` opens a local file (`config :nist_view, open_path_param: true` in `dev.exs`).
 - **Checked:** by screenshot with headless Chrome on BioCTS files (M1 overlay, the Type-4 tenprint card, a 3300 × 4400 JPEG 2000 face, a truncated file, warnings) and by LiveView tests.
 - **Build note:** macOS 27 kills the standalone Tailwind 4.1.12 binary (exit 137) because its ad-hoc signature no longer matches. After `mix assets.setup`, run `codesign --force --sign - _build/tailwind-macos-arm64-4.1.12`.
+
+**M4 status (2026-09-29).** `src-tauri/` holds a Tauri 2 shell built on ElixirKit.
+- **Result:** `CI=true cargo tauri build` produces `NIST Viewer.app` (41 MB) and a DMG (16 MB) for macOS arm64. Both are signed ad hoc; there's no Developer ID yet.
+- **Starting the server:**
+  - The shell starts the Elixir release (`mix phx.server` under `cargo tauri dev`) with `PORT=0`, `NIST_VIEW_LAUNCH_TOKEN` (32 random bytes per launch) and `ELIXIRKIT_PUBSUB`.
+  - `NistView.Desktop` reports `ready:<url>` once the endpoint listens.
+  - The shell opens a window on `<url>/?launch=<token>`.
+- **Security:**
+  - `NistViewWeb.LaunchToken` (a plug, plus `on_mount` for LiveView) returns 403 to anything without the token or a session that presented it. That covers pages, `/render/:token` images and the LiveView socket.
+  - Phoenix listens on 127.0.0.1 only.
+  - The CSP is strict (`script-src 'self'`); the root layout's inline theme script was removed.
+  - Windows can't navigate away from the server origin and have no Tauri IPC.
+- **Opening files:**
+  - Drag and drop and the file picker work inside the webview. The Tauri drag-and-drop handler is off, so drops reach the page.
+  - File associations for `.an2 .nst .eft .nist`: macOS `Opened` events, argv on Windows and Linux, and a second launch through the single-instance plugin.
+  - Each file is sent as `<id>\n<path>` on the `open` topic and gets its own window on `/?open=<id>`. Only the shell can register paths.
+- **Ecto, Postgres, Swoosh and DNSCluster removed.** A desktop viewer needs no database.
+- **Checked:**
+  - The release, run from inside the `.app` (its path contains a space), serves pages and digested assets.
+  - It refuses requests without the token and binds to loopback only.
+  - The NIF decodes JPEG 2000 in prod.
+  - Tests cover the launch token and opening by id, both before and after the window connects.
+- **Not yet checked:**
+  - The CI workflow (`.github/workflows/desktop.yml`, five targets through `tauri-action`) has never run.
+  - Windows is the biggest risk: the vendored NBIS C sources have not been compiled with MSVC.
+  - The file association flow is untested on a real double-click; it needs the app installed.
 
 ## 8. Open questions
 1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. JPEG 2000 and JPEGL are now supported anyway. Still open: do the files we need to view contain Type-17 iris?

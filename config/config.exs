@@ -7,9 +7,7 @@
 # General application configuration
 import Config
 
-config :nist_view,
-  ecto_repos: [NistView.Repo],
-  generators: [timestamp_type: :utc_datetime]
+config :nist_view, generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint
 config :nist_view, NistViewWeb.Endpoint,
@@ -21,15 +19,6 @@ config :nist_view, NistViewWeb.Endpoint,
   ],
   pubsub_server: NistView.PubSub,
   live_view: [signing_salt: "jdwUldcV"]
-
-# Configure the mailer
-#
-# By default it uses the "Local" adapter which stores the emails
-# locally. You can see the emails in your browser, at "/dev/mailbox".
-#
-# For production it's recommended to configure a different adapter
-# at the `config/runtime.exs`.
-config :nist_view, NistView.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure esbuild (the version is required)
 config :esbuild,

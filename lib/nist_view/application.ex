@@ -7,15 +7,20 @@ defmodule NistView.Application do
 
   @impl true
   def start(_type, _args) do
+    # Set by the desktop shell (src-tauri); absent in a plain `mix phx.server`.
+    pubsub = System.get_env("ELIXIRKIT_PUBSUB")
+
     children = [
       NistViewWeb.Telemetry,
-      NistView.Repo,
-      {DNSCluster, query: Application.get_env(:nist_view, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: NistView.PubSub},
       NistView.ImageStore,
+      {ElixirKit.PubSub, connect: pubsub || :ignore, on_exit: fn -> System.stop() end},
       # Start to serve requests, typically the last entry
       NistViewWeb.Endpoint
     ]
+
+    # Reports the server's URL to the shell, so it must start after the endpoint.
+    children = if pubsub, do: children ++ [NistView.Desktop], else: children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

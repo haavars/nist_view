@@ -45,3 +45,10 @@ npm-debug.log
 
 # Editor swap files.
 *.swp
+
+# Output of `mix assets.deploy` (phx.digest).
+/priv/static/**/*.gz
+/priv/static/**/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*.*
+
+# macOS Finder metadata.
+.DS_Store

@@ -1,0 +1,21 @@
+[package]
+name = "nist-viewer"
+version = "0.1.0"
+description = "Desktop viewer for ANSI/NIST-ITL transaction files"
+edition = "2021"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name, which
+# matters on Windows (https://github.com/rust-lang/cargo/issues/8519).
+name = "nist_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+getrandom = "0.3"
+# Fetched by `mix deps.get` (see mix.exs).
+elixirkit = { path = "../deps/elixirkit/elixirkit_rs" }
