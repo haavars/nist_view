@@ -20,7 +20,7 @@ defmodule Mix.Tasks.Nist.Dump do
 
   use Mix.Task
 
-  alias NistView.{Field, FieldNames, ImageRef, Imaging, NistFile, Parser, Record}
+  alias NistView.{Field, FieldNames, ImageRef, Imaging, Minutiae, NistFile, Parser, Record}
 
   @max_subfields 8
   @max_chars 100
@@ -80,6 +80,7 @@ defmodule Mix.Tasks.Nist.Dump do
     Enum.each(record.fields, &print_field(record.type, &1, opts))
 
     if record.image, do: print_image(record, index, path, opts)
+    Enum.each(Minutiae.decode(record), &print_minutiae/1)
 
     IO.puts("")
   end
@@ -142,6 +143,13 @@ defmodule Mix.Tasks.Nist.Dump do
           IO.puts("         not displayable: #{inspect(reason)}")
       end
     end
+  end
+
+  defp print_minutiae(%Minutiae{} = set) do
+    IO.puts(
+      "  minutiae: #{set.format}, #{length(set.minutiae)} minutiae, " <>
+        "#{length(set.cores)} cores, #{length(set.deltas)} deltas"
+    )
   end
 
   defp write_image(dir, path, index, record, mime, bytes) do

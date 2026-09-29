@@ -6,7 +6,7 @@ defmodule NistView.BioctsSampleTest do
 
   use ExUnit.Case, async: true
 
-  alias NistView.{Field, Imaging, Parser, Record}
+  alias NistView.{Field, Imaging, Minutiae, Parser, Record}
 
   @dir "test/samples/biocts"
 
@@ -101,5 +101,32 @@ defmodule NistView.BioctsSampleTest do
 
     assert Enum.map(file.records, & &1.type) == [1, 3, 5, 6]
     assert Enum.map(file.warnings, &elem(&1, 1)) == List.duplicate(:short_record, 3)
+  end
+
+  test "M1, legacy and FBI blocks for the same print agree after normalisation" do
+    [m1, standard, fbi] =
+      for name <- ~w(pass-type-9-14-m1.an2 pass-type-9-10-14.an2 pass-type-9-4-iafis.an2) do
+        type9 = name |> parse!() |> Map.fetch!(:records) |> Enum.find(&(&1.type == 9))
+        assert [set] = Minutiae.decode(type9)
+        # All three prints are 800 × 768 at 197 pixels per centimetre.
+        Minutiae.to_pixels(set, 197 * 2.54, 768)
+      end
+
+    assert {m1.format, standard.format, fbi.format} == {:m1, :standard, :fbi}
+
+    for other <- [standard, fbi] do
+      assert length(other.minutiae) == 48
+
+      for {a, b} <- Enum.zip(m1.minutiae, other.minutiae) do
+        assert_in_delta a.x, b.x, 1.0
+        assert_in_delta a.y, b.y, 1.0
+        assert abs(rem(round(a.angle - b.angle) + 540, 360) - 180) <= 1
+      end
+
+      for {a, b} <- Enum.zip(m1.cores ++ m1.deltas, other.cores ++ other.deltas) do
+        assert_in_delta a.x, b.x, 1.0
+        assert_in_delta a.y, b.y, 1.0
+      end
+    end
   end
 end
