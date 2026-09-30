@@ -171,8 +171,9 @@ gives the two hashes pinned in `test/nist_view/biocts_sample_test.exs`, which
 were computed on x86_64 Linux. So the reference does not depend on the
 architecture either.
 
-The Rust decoder was checked on arm64 at the step 4 commit and again at the
-step 6 commit, with the bulk paths: `mix precommit` passes with the BioCTS
+The Rust decoder was checked on arm64 at the step 4 commit, at the step 6
+commit with the bulk paths, and at the final commit of the port (`d4252fb`,
+with the regression inputs): `mix precommit` passes with the BioCTS
 samples present, and the differential test
 (`native/nbis_ref/tests/compare.rs`) passes on all 136 streams with the same
 number of generated streams accepted per filter pair as on Linux. There the
