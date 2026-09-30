@@ -69,6 +69,14 @@ impl TagNode {
     fn build(width: u32, height: u32, level: u16, nodes: &mut Vec<Self>) -> Self {
         let mut tag = Self::new(width, height, level);
 
+        // nist_view: an empty node has only empty descendants, and none of
+        // them is kept. Without this, a tree walks the whole square of its
+        // longer side: 4^13 calls for a precinct 8192 code blocks wide and
+        // one high, where about 16,000 nodes exist (docs/jp2-port.md).
+        if width == 0 || height == 0 {
+            return tag;
+        }
+
         if level == 0 {
             // We reached the leaf node.
             assert!(width <= 1 && height <= 1);
@@ -234,5 +242,39 @@ impl TagTree {
         debug_assert!(x < self.width && y < self.height);
 
         read_tag_node(self.root, x, y, reader, 0, max_val, nodes)
+    }
+}
+
+// nist_view: tests for the change in `TagNode::build`.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tag tree has one node per cell of each level's grid, the grid
+    /// halving (rounded up) from the leaves to the 1 x 1 root.
+    fn expected_nodes(mut width: u32, mut height: u32) -> usize {
+        let mut nodes = 1;
+        while width > 1 || height > 1 {
+            nodes += width as usize * height as usize;
+            (width, height) = (width.div_ceil(2), height.div_ceil(2));
+        }
+        nodes
+    }
+
+    #[test]
+    fn a_tree_holds_one_node_per_cell_of_each_level() {
+        for (width, height) in [(1, 1), (2, 1), (5, 3), (7, 9), (64, 64), (131, 97), (5217, 25), (3, 1000)] {
+            let mut nodes = Vec::new();
+            TagTree::new(width, height, &mut nodes);
+            assert_eq!(nodes.len(), expected_nodes(width, height), "{width} x {height}");
+        }
+    }
+
+    #[test]
+    fn a_long_thin_tree_is_built_in_time_linear_in_its_nodes() {
+        // Before the change this took 4^20 calls, about two hours.
+        let mut nodes = Vec::new();
+        TagTree::new(1 << 20, 1, &mut nodes);
+        assert_eq!(nodes.len(), (1 << 21) - 1);
     }
 }

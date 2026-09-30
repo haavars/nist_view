@@ -52,7 +52,7 @@ launch token is required and `/?path=…` opens a local file.
 | `lib/mix/tasks/` | `nist.dump`, `nist.samples`, `compile.nist_decode` |
 | `native/nist_codecs/` | Rust library: decoders, header readers, PNG; NIF behind the `nif` feature |
 | `native/nbis_ref/` | Vendored, patched NBIS WSQ sources and their Rust wrapper: the reference the Rust WSQ decoder is tested against. Development only; nothing shipped links it |
-| `native/hayro-jpeg2000/` | The JPEG 2000 decoder: a copy of the `hayro-jpeg2000` crate with one fix (`PATCHES.md`) |
+| `native/hayro-jpeg2000/` | The JPEG 2000 decoder: a copy of the `hayro-jpeg2000` crate with two fixes, reconstruction and speed (`PATCHES.md`) |
 | `native/opj_ref/` | OpenJPEG (C) through `jpeg2k`: the reference the JPEG 2000 decoder is tested against. Development only; nothing shipped links it |
 | `native/nist_codecs/fuzz/` | cargo-fuzz targets and scripts |
 | `native/nist_decode/` | The helper executable |

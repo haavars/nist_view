@@ -108,7 +108,7 @@ Revised in M5; details in [architecture.md](architecture.md#images).
 - **Decoding runs out of process**, in the `nist_decode` helper (`native/nist_decode`, built by the `:nist_decode` Mix compiler), one process per image through `NistView.Decoder`: `decode(:wsq | :jpegl | :jp2, bytes) :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. Crashes and timeouts become errors.
 - **WSQ:** our own safe-Rust decoder (`src/wsq.rs`), since 2026-09-30. It follows NBIS 5.0.0's behaviour, and its output is identical to NBIS built without fused multiply-add. NBIS's decoder had memory bugs and is kept only as the test reference (`native/nbis_ref`, development only). Details: [wsq-port.md](wsq-port.md).
 - **Lossless JPEG:** our own safe-Rust decoder (`src/jpegl.rs`). NBIS's decoder had many memory bugs and was removed. libjpeg-turbo 3.2 is the reference for testing (dev-only).
-- **JPEG 2000:** the safe-Rust `hayro-jpeg2000` crate, a copy with one fix (`native/hayro-jpeg2000`), and our own 8-bit conversion, since 2026-09-30. Lossless output is identical to OpenJPEG's; lossy output is within 1 in a fraction of a percent of samples. OpenJPEG is kept as the test reference (`native/opj_ref`, development only). Details: [jp2-port.md](jp2-port.md).
+- **JPEG 2000:** the safe-Rust `hayro-jpeg2000` crate, a copy with two fixes (`native/hayro-jpeg2000/PATCHES.md`), and our own 8-bit conversion, since 2026-09-30. Lossless output is identical to OpenJPEG's; lossy output is within 1 in a fraction of a percent of samples. OpenJPEG is kept as the test reference (`native/opj_ref`, development only). Details: [jp2-port.md](jp2-port.md).
 - Every decoder reads the header first and refuses images over 100 megapixels.
 - **Toolchain:** Rust 1.98.1 and Rustler 0.38 (`.tool-versions`).
 - **Distribution:** built from source for now. Consider `rustler_precompiled` later; for offline builds, compile from source or use an internal artefact store.
@@ -179,7 +179,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ on branch `jp2-rust-eval`, not merged ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -267,6 +267,7 @@ Details, fuzzing results and open items: [security.md](security.md).
   - OpenJPEG and the Rust code: no crashes.
 - **Decision:** decode out of process. The `nist_decode` helper runs one process per image with a timeout. The NIF has no C left.
 - **WSQ (2026-09-30):** a safe-Rust decoder replaces NBIS in the helper, as for lossless JPEG. Identical pixels to NBIS on all 136 BioCTS WSQ streams, three times as fast, and fuzzed for two hours alone (1.5 million inputs) and two hours against NBIS (287,000 inputs) without a finding.
+- **JPEG 2000 (2026-09-30):** the safe-Rust `hayro-jpeg2000` crate, patched, replaces OpenJPEG, so the helper has no C at all. Lossless identical to OpenJPEG, lossy within 1; the same pixels on x86_64 and arm64. Fuzzed for 110 minutes (2 million inputs) without a crash; the slow inputs it found came from a quadratic loop in the crate, fixed in our copy ([jp2-port.md](jp2-port.md#slow-inputs)).
 - **Lossless JPEG:** a new safe-Rust decoder replaces NBIS.
   - Pixel-identical on the fixtures, which libjpeg-turbo 3.2 also decodes identically.
   - 4.8 million fuzz inputs without a crash.
@@ -274,7 +275,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 - **Security review:** the controls in place are documented and checked on the built release.
 - **Still to do** (see [security.md](security.md#open-items)):
   - the libjpeg-turbo differential fuzz target
-  - longer fuzz runs for lossless JPEG and JPEG 2000 (WSQ has had two hours per target)
+  - longer fuzz runs for lossless JPEG, and JPEG 2000 again with the tag-tree fix (WSQ has had two hours per target)
   - minimised regression inputs for lossless JPEG (WSQ has them)
   - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`
