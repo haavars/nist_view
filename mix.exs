@@ -108,7 +108,8 @@ defmodule NistView.MixProject do
         "format",
         "test",
         "cmd --cd native/nist_codecs cargo test --release --quiet",
-        "cmd --cd native/nbis_ref cargo test --release --quiet"
+        "cmd --cd native/nbis_ref cargo test --release --quiet",
+        "cmd --cd native/opj_ref cargo test --release --quiet"
       ]
     ]
   end

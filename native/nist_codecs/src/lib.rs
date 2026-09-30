@@ -1,7 +1,8 @@
 //! Image codecs for NistView.
 //!
-//! The decoders are plain Rust over untrusted bytes: each reads the image
-//! header first and refuses oversized images before any decoder allocates.
+//! The decoders are safe Rust over untrusted bytes, with no C anywhere:
+//! each reads the image header first and refuses oversized images before
+//! it allocates for them.
 //! With the default `nif` feature, `nif.rs` exposes them to Elixir as
 //! `NistView.Codecs`; without it (the fuzz targets) there is no rustler.
 
@@ -56,6 +57,11 @@ pub struct Pixels {
     pub colorspace: ColorSpace,
     pub data: Vec<u8>,
 }
+
+/// What one decode may allocate, by the decoder's own estimate: 2 GiB. The
+/// pixel limit alone allows a 100-megapixel colour JPEG 2000 image, which
+/// would take about 3 GB.
+pub const MAX_DECODE_BYTES: u64 = 2 << 30;
 
 pub fn check_dimensions(width: u32, height: u32) -> Result<(), Error> {
     if width == 0 || height == 0 {

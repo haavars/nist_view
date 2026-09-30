@@ -122,6 +122,33 @@ NBIS-derived decoders. The details and how this was established are in
   in about 7 of a million pixels, which is within the specification's
   tolerance for decoders (99.9 % of pixels equal, none off by more than 1).
 
+## JPEG 2000 as decoded
+
+JP2 files and raw codestreams (`JP2` and `JP2L` records) are decoded by the
+`hayro-jpeg2000` crate with one fix, and converted to 8 bits by our own code
+(`native/nist_codecs/src/jp2.rs`; [jp2-port.md](jp2-port.md)). What matters
+when an image looks wrong or does not decode:
+
+- **Lossless images** come out identical to OpenJPEG's decoding. **Lossy
+  images** are within 1 of it in a fraction of a percent of samples.
+- **Components.** One or two components give a greyscale image from the
+  first; three or more give the first three as colour. An alpha channel is
+  dropped. Subsampled components are brought to full size.
+- **Colour space.** sRGB from a JP2 file is reported as sRGB, and sYCC
+  arrives already converted to RGB. A raw codestream says nothing about its
+  components, so three of them are reported as unspecified, and the record's
+  colour space field decides. CMYK is refused.
+- **More than 8 bits** are scaled down to 8 (`v · 255 / max`, rounded
+  down). Signed samples are shifted to unsigned.
+- **Sizes.** At most 100 megapixels, and at most 2 GiB of estimated decoder
+  memory, which a colour image passes at about 67 megapixels.
+- **Damaged files.** The decoder is lenient: it shows what it could decode
+  of a truncated or damaged stream where a stricter one would give an error.
+- **Not supported:** a region of interest that covers only part of an image
+  (the RGN marker is ignored), and more than 30 bit planes.
+- All 12 distinct BioCTS images are 8-bit greyscale or sRGB JP2 files in a
+  single tile; 8 are lossless.
+
 ## Lossless JPEG quirks (NBIS encoder)
 
 Files written by NBIS `cjpegl` are not conformant, and both

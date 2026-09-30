@@ -33,7 +33,11 @@ loose =
       ],
       do: {target, File.read!(Path.join("test/fixtures", name))}
 
-seeds = Enum.uniq(images ++ loose)
+# The generated JPEG 2000 files: small, and between them most coding options.
+generated =
+  for path <- Path.wildcard("test/fixtures/jp2/*"), do: {"jp2", File.read!(path)}
+
+seeds = Enum.uniq(images ++ loose ++ generated)
 
 for {target, data} <- seeds do
   dir = Path.join(corpus, target)

@@ -1,0 +1,17 @@
+[package]
+name = "opj_ref"
+version = "0.1.0"
+edition = "2021"
+description = "OpenJPEG (C) as the development-time reference for the Rust JPEG 2000 decoder"
+publish = false
+
+[lib]
+name = "opj_ref"
+path = "src/lib.rs"
+
+[dependencies]
+jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys"] }
+
+[dev-dependencies]
+# The decoder under test.
+nist_codecs = { path = "../nist_codecs", default-features = false }

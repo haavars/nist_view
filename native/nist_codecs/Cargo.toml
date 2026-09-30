@@ -11,7 +11,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 rustler = { version = "0.38", optional = true }
 png = "0.18"
-jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys"] }
+# A patched copy (native/hayro-jpeg2000/PATCHES.md). Without its default
+# features it has no SIMD and no dependencies, and then no unsafe code.
+hayro-jpeg2000 = { path = "../hayro-jpeg2000", default-features = false }
 
 [features]
 default = ["nif"]

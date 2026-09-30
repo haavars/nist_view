@@ -23,8 +23,9 @@ network attackers (the viewer makes no network connections).
 | Parser in pure Elixir; records sliced by declared length; parsing is total (errors are values, never crashes) | `NistView.Parser` |
 | Property tests: generated transactions round-trip; truncation, corruption and arbitrary bytes never raise | `test/nist_view/parser_property_test.exs` |
 | Decoders read the image size from the header and refuse images over 100 megapixels before allocating | `native/nist_codecs/src/headers.rs`, `check_dimensions` |
+| JPEG 2000 decoding is also bounded by an estimate of its memory, 2 GiB, which a 100-megapixel colour image would exceed | `native/nist_codecs/src/jp2.rs`, `MAX_DECODE_BYTES` |
 | A decode is bounded, not cheap: a WSQ file of a few hundred bytes can declare 100 megapixels and then costs 1 to 3 seconds of CPU and about 1 GB in the helper (measured; filters are capped at the specification's 32 taps). The timeout below is what ends anything slower | `native/nist_codecs/src/wsq.rs`, [`wsq-port.md`](wsq-port.md#found-while-porting) |
-| **Image decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. Only JPEG 2000 is still decoded by C code (OpenJPEG). A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
+| **Image decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. All three decoders are safe Rust; nothing in the helper is C. A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
 | Lossless JPEG decoded by our own safe-Rust decoder instead of NBIS | `native/nist_codecs/src/jpegl.rs` |
 | WSQ decoded by our own safe-Rust decoder instead of NBIS (2026-09-30), and tested to give the same pixels. NBIS had seven memory bugs reachable from a file (one patched in our copy, six not); it is now only a development-time reference | `native/nist_codecs/src/wsq.rs`, `native/nbis_ref/README.md`, [`wsq-port.md`](wsq-port.md) |
 | Fuzzing of every decoder with AddressSanitizer on both Rust and C | [`fuzzing.md`](fuzzing.md) |
@@ -69,7 +70,8 @@ Ten-minute campaigns per decoder with AddressSanitizer on the C code
 | NBIS lossless JPEG | Many bugs: heap buffer overflows (`decode_data`, `getc_byte`, `jpegl_decode_mem`), stack buffer overflow and underflow and a use-after-free in `update_IMG_DAT_decode`, segfaults; 797 crashing inputs in 10 minutes | Replaced by a safe-Rust decoder; NBIS code removed |
 | Rust lossless JPEG (new) | 0 crashes in 4.8 million inputs | — |
 | Rust WSQ (new, 2026-09-30) | 115 minutes: 0 crashes, timeouts or out-of-memory in 1.5 million inputs. Against NBIS (`wsq_diff`, 115 minutes, 287,000 inputs): no difference in pixels, size or PPI, and no memory error in NBIS on anything the Rust decoder accepts | One finding in the first ten minutes, before the long run: decoding time follows the size a file declares (see Controls). NBIS: seven memory bugs in all; the six that are not patched in the reference each have a regression input |
-| OpenJPEG (JPEG 2000) | 0 crashes | — |
+| OpenJPEG (JPEG 2000) | 0 crashes | Replaced on 2026-09-30 by a safe-Rust decoder, to have no C on untrusted input |
+| Rust JPEG 2000 (new, 2026-09-30) | 110 minutes, 2.0 million inputs: 0 crashes, 0 out-of-memory. 18 slow inputs: small files declaring very long, thin images take 1 to 9 seconds in a normal build | Slow inputs not yet investigated ([`jp2-port.md`](jp2-port.md#slow-inputs)); the helper's 60 s limit contains them |
 | Header readers (Rust) | 0 crashes in 25 million inputs | — |
 
 Decision (the plan's M5 question): **decode out of process.** The WSQ bug
@@ -82,36 +84,19 @@ than crash.
 0. ~~Replace NBIS WSQ with safe Rust.~~ Done 2026-09-30
    ([`wsq-port.md`](wsq-port.md)): decoded in safe Rust, identical to NBIS on
    all samples, fuzzed alone and against NBIS.
-1. **The last C decoder: replace OpenJPEG or sandbox the helper.**
-   Out-of-process decoding contains crashes, but a memory-corruption exploit
-   in OpenJPEG would still run with the user's privileges. OpenJPEG (JPEG
-   2000) is the only C left that parses untrusted data; WSQ and lossless
-   JPEG are safe Rust. Two ways to close this, **to be chosen when the WSQ
-   fuzzing is finished** (options written down 2026-09-30, nothing tried
-   yet):
-
-   | Option | Memory-safe | Notes |
-   |---|---|---|
-   | Replace OpenJPEG with `hayro-jpeg2000` | Yes | A from-scratch Rust decoder (about 7,000 lines, Apache-2.0 or MIT, version 0.4.0). With its `simd` feature off, `unsafe` is forbidden in its whole dependency tree. Reads JP2 files and raw codestreams and exposes the decoded components, so our 8-bit conversion can stay. One change for all platforms |
-   | Sandbox `nist_decode` | No (contained) | Drop privileges in the helper, which needs only stdin and stdout: a sandbox profile on macOS, seccomp and landlock on Linux, a job object and a restricted token on Windows. Three implementations, each to be tested on its own system; nothing has been built on Windows yet |
-   | `openjp2`, the other backend of the `jpeg2k` crate | No | OpenJPEG translated to Rust by c2rust, still full of `unsafe`. No gain |
-   | Our own decoder, as for WSQ | Yes | JPEG 2000 is a far larger standard than WSQ. Not worth it while the first option exists |
-
-   Proposed order: evaluate `hayro-jpeg2000` first, the way the WSQ decoder
-   was checked. Decode the 12 distinct BioCTS JPEG 2000 images and the
-   fixtures with both decoders, keep OpenJPEG as a development-only
-   reference, and fuzz. To find out:
-   - Pixels: the tests pin `opj_decompress` hashes. Lossless images (`JP2L`)
-     must be identical; lossy ones may differ in rounding, and then we decide
-     whether that is acceptable.
-   - Our odd cases: signed samples, more than 8 bits, subsampled components,
-     sYCC.
-   - Speed: its authors expect it to be somewhat slower than OpenJPEG.
-
-   If it holds, nothing shipped parses untrusted data in C, and a sandbox
-   becomes defence in depth instead of the main containment. The helper
-   process stays either way: it contains panics, hangs and memory use. If it
-   does not hold, sandbox the helper.
+1. **Sandbox the helper** (defence in depth). No C parses untrusted data
+   any more: JPEG 2000 has been decoded by the safe-Rust `hayro-jpeg2000`
+   since 2026-09-30 ([`jp2-port.md`](jp2-port.md); the options that were
+   weighed are in [`jp2-rust-eval.md`](jp2-rust-eval.md)). A memory-safety
+   bug would now have to be in the Rust compiler or standard library. The
+   helper still runs with the user's privileges and needs only stdin and
+   stdout, so dropping the rest remains worth doing, at lower priority: a
+   sandbox profile on macOS, seccomp and landlock on Linux, a job object and
+   a restricted token on Windows.
+   - The JPEG 2000 decoder gives the same pixels on x86_64 and arm64. The
+     fix it needs is carried in our copy of the crate
+     (`native/hayro-jpeg2000/PATCHES.md`) and is deliberately not reported
+     upstream while this is a proof of concept.
 2. **libjpeg-turbo as reference.** Decided: fuzz our lossless JPEG decoder
    differentially against libjpeg-turbo 3.2 (dev-only, not shipped).
    Verified by hand that it decodes the NBIS fixtures identically; the fuzz

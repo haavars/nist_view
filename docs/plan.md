@@ -4,7 +4,7 @@ A cross-platform desktop viewer for ANSI/NIST-ITL transaction files (`.nst`, `.a
 
 Stack: **Elixir/Phoenix LiveView** for the UI and parsing, **one Rust NIF** for image codecs, and **Tauri + ElixirKit** as the desktop shell.
 
-Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan).
+Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan), [jp2-rust-eval](jp2-rust-eval.md) and [jp2-port](jp2-port.md) (JPEG 2000 in safe Rust: the evaluation and the change).
 
 ---
 
@@ -108,7 +108,7 @@ Revised in M5; details in [architecture.md](architecture.md#images).
 - **Decoding runs out of process**, in the `nist_decode` helper (`native/nist_decode`, built by the `:nist_decode` Mix compiler), one process per image through `NistView.Decoder`: `decode(:wsq | :jpegl | :jp2, bytes) :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. Crashes and timeouts become errors.
 - **WSQ:** our own safe-Rust decoder (`src/wsq.rs`), since 2026-09-30. It follows NBIS 5.0.0's behaviour, and its output is identical to NBIS built without fused multiply-add. NBIS's decoder had memory bugs and is kept only as the test reference (`native/nbis_ref`, development only). Details: [wsq-port.md](wsq-port.md).
 - **Lossless JPEG:** our own safe-Rust decoder (`src/jpegl.rs`). NBIS's decoder had many memory bugs and was removed. libjpeg-turbo 3.2 is the reference for testing (dev-only).
-- **JPEG 2000:** `jpeg2k` with the bundled OpenJPEG, and our own 8-bit conversion. Output is bit-identical to `opj_decompress`. This is the last C that parses untrusted data; replacing it with the safe-Rust `hayro-jpeg2000` or sandboxing the helper is to be decided after the WSQ fuzzing ([security.md](security.md#open-items)). (The crate's `openjp2` backend is OpenJPEG machine-translated to Rust, still `unsafe`, and no gain.)
+- **JPEG 2000:** the safe-Rust `hayro-jpeg2000` crate, a copy with one fix (`native/hayro-jpeg2000`), and our own 8-bit conversion, since 2026-09-30. Lossless output is identical to OpenJPEG's; lossy output is within 1 in a fraction of a percent of samples. OpenJPEG is kept as the test reference (`native/opj_ref`, development only). Details: [jp2-port.md](jp2-port.md).
 - Every decoder reads the header first and refuses images over 100 megapixels.
 - **Toolchain:** Rust 1.98.1 and Rustler 0.38 (`.tool-versions`).
 - **Distribution:** built from source for now. Consider `rustler_precompiled` later; for offline builds, compile from source or use an internal artefact store.
@@ -179,7 +179,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ on branch `jp2-rust-eval`, not merged ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -257,7 +257,7 @@ Details, fuzzing results and open items: [security.md](security.md).
   - Tests cover the launch token and opening by id, both before and after the window connects.
 - **Not yet checked:**
   - The CI workflow (`.github/workflows/desktop.yml`, five targets through `tauri-action`) has never run.
-  - Windows is the biggest risk: the vendored NBIS C sources have not been compiled with MSVC. *(2026-09-30: no longer part of the build; the only C left is OpenJPEG.)*
+  - Windows is the biggest risk: the vendored NBIS C sources have not been compiled with MSVC. *(2026-09-30: no longer part of the build. Since the JPEG 2000 change there is no C in the build at all, apart from what Tauri and the Erlang runtime bring.)*
   - The file association flow is untested on a real double-click; it needs the app installed.
 
 **M5 status (2026-09-29, in progress).** Full details: [security.md](security.md), [fuzzing.md](fuzzing.md).
@@ -276,7 +276,7 @@ Details, fuzzing results and open items: [security.md](security.md).
   - the libjpeg-turbo differential fuzz target
   - longer fuzz runs for lossless JPEG and JPEG 2000 (WSQ has had two hours per target)
   - minimised regression inputs for lossless JPEG (WSQ has them)
-  - the last C decoder (OpenJPEG): replace it with safe Rust or sandbox the helper; options in [security.md](security.md#open-items), choice pending
+  - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`
   - redacted crash reports
   - validation of client events
