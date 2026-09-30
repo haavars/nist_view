@@ -68,12 +68,15 @@ pixels on all 48 images. See `docs/wsq-port.md`.
 
 ## Known unpatched bugs
 
-Fuzzing inputs still crash this code after the patch above: a NULL write in
-`getc_nextbits_wsq`, heap overflows in `getc_transform_table` and
-`unquantize`, a global overflow in `getc_huffman_table_wsq`, and a double
-free of the filter arrays after a truncated transform table. There are
-latent ones too. Root causes are in `docs/wsq-port.md`. The plan is to
-replace this code with a safe-Rust decoder, not to patch it further.
+Six kinds of input still crash this code after the patch above: a NULL write
+in `getc_nextbits_wsq`, heap overflows in `getc_transform_table` and
+`unquantize`, a global overflow in `getc_huffman_table_wsq`, a double free of
+the filter arrays after a truncated transform table, and a `memcpy` of −1
+bytes for a comment of length 1. There are latent ones too. Root causes are
+in `docs/wsq-port.md`, and one input for each is in
+`native/nist_codecs/fuzz/regressions/wsq`. They are left unpatched on
+purpose: the Rust decoder replaced this code, and the reference is only given
+input that the Rust decoder accepts.
 
 ## Notes for anyone changing this
 

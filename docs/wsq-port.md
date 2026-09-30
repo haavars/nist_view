@@ -1,7 +1,6 @@
 # WSQ in safe Rust — research and plan
 
-Status 2026-09-30: **steps 1 to 4 and 6 of 7 done** (see [Steps](#steps));
-step 5, the differential fuzzing, is next. The
+Status 2026-09-30: **all seven steps done** (see [Steps](#steps)). The
 decoder (`native/nist_codecs/src/wsq.rs`) gives the same pixels as NBIS on
 every sample image, and the application decodes WSQ with it. NBIS is no
 longer linked into anything that ships. This document is the hand-over: everything found so far,
@@ -58,6 +57,7 @@ All in `native/nbis_ref/vendor/nbis/src/`:
 | heap overflow in `getc_transform_table` (`wsq/tableio.c`) | A filter length (`hisz`/`losz`) of 0: `a_size` is an `unsigned char`, `a_size--` wraps to 255, and the loop writes 256 coefficients into a zero-length `calloc`. |
 | global overflow in `getc_huffman_table_wsq` (`wsq/tableio.c`) | The table id byte is not checked against `MAX_DHT_TABLES` (8) before `dht_table + table_id`. The block header's table selector has the same problem (`decoder.c`, `(dht_table+hufftable_id)->tabdef`). |
 | double free in `free_wsq_decoder_resources` (`wsq/util.c`) | When a transform table is cut off inside its coefficients, the error paths of `getc_transform_table` free `lofilt` and `hifilt` without clearing the pointers, and `wsq_decode_mem` then frees them again. Found on 2026-09-30 by the Linux run below. |
+| negative size in `getc_bytes` (`ioutil/dataio.c`) | A comment segment of length 1: `getc_comment` asks for `length − 2` bytes, and `memcpy` gets −1. (A length of 0 asks `calloc` for −1 bytes, which fails cleanly.) Seen by `replay.sh` on 2026-09-30; predicted from the source before that. |
 | heap overflow in `unquantize` (`wsq/util.c`) | Reads and writes follow the subband tree and the coefficient stream without bounds; related out-of-range walks exist in `join_lets` (filter longer than a subband, zero-length lines). |
 
 Latent bugs found while reading (not hit by the fuzzer yet):
@@ -556,26 +556,37 @@ Things the research above did not have, all confirmed against NBIS:
      under cargo-fuzz and to the notes on decoding time above. The fuzzer
      runs this decoder at 10 to 30 inputs per second, against about 200 for
      NBIS: a reason to do step 6 (speed) before the long runs of step 5.
-5. **In progress** (2026-09-30). Add the `wsq_diff` target and the corpus
-   replay script; fuzz; minimise and commit the regression inputs.
-   - Done: the `wsq_diff` target (`decode_strict` against NBIS under ASan),
-     the `nbis_wsq` target (NBIS alone, for reproducing its crashes),
-     `fuzz/replay.sh` and `fuzz/minimise.py`. See [fuzzing.md](fuzzing.md).
-   - `decode_strict` now also fails where NBIS's reading of the resolution
-     is undefined: a `PPI` number outside `int`, and more than 100 names in
-     `NIST_COM` (NBIS has room for 100 and leaves the values of further ones
-     uninitialised). `decode` is unchanged.
-   - `replay.sh` over the corpora and the 27 NBIS crash inputs (696 files):
-     no file that NBIS decodes cleanly and the Rust decoder rejects.
-   - `cargo fuzz tmin` does not work for NBIS: it accepts any crash, and
+5. ✅ (2026-09-30) Add the `wsq_diff` target and the corpus replay script;
+   fuzz; minimise and commit the regression inputs.
+   - **Targets and tools** (see [fuzzing.md](fuzzing.md)): `wsq_diff`
+     (`decode_strict` against NBIS under ASan), `nbis_wsq` (NBIS alone, for
+     reproducing its crashes), `fuzz/replay.sh` and `fuzz/minimise.py`.
+   - **The long runs** (x86_64, 115 minutes each, side by side):
+     - `wsq`, 10 processes: 1,504,967 inputs. No crash, no timeout, no
+       out-of-memory.
+     - `wsq_diff`, 12 processes: 287,115 inputs. No mismatch with NBIS in
+       pixels, size or PPI, and no memory error in NBIS on anything the Rust
+       decoder accepts.
+   - **`replay.sh`** over the corpora the runs grew and the NBIS crash inputs
+     (1,141 files): the Rust decoder accepts 268; of the 873 it rejects,
+     NBIS fails on 812 and has a memory error on 61. None is decoded cleanly
+     by NBIS, so nothing was found that the Rust decoder rejects without
+     cause.
+   - **`decode_strict`** now also fails where NBIS's reading of the
+     resolution is undefined: a `PPI` number outside `int`, and more than 100
+     names in `NIST_COM` (NBIS has room for 100 and leaves the values of
+     further ones uninitialised). `decode` is unchanged.
+   - **`cargo fuzz tmin` does not work for NBIS:** it accepts any crash, and
      reduced every input to the same six bytes (`FFA0 FFA8 0000`, a comment
      of length 0, where `calloc(-1)` fails). `minimise.py` keeps the crash
      the same.
-   - Regression inputs committed so far (`fuzz/regressions/wsq`): the double
-     free, the transform table overflow and the Huffman table id. The NULL
-     write in `getc_nextbits_wsq` and the overflow in `unquantize` are still
-     being minimised.
-   - Still running: the long fuzz runs of `wsq` and `wsq_diff`.
+   - **Regression inputs** (`fuzz/regressions/wsq`, read by
+     `NistView.DecoderTest`): one for each of the six NBIS bugs that are not
+     patched in the reference. Four are fuzzer
+     findings minimised to between 203 and 896 bytes, with at most three
+     bytes of block data left; two are made by hand (the Huffman table id
+     from the synthetic fixture, and the six-byte comment of length 1).
+   - Not done: a run on arm64, and runs longer than two hours.
 6. ✅ (2026-09-30, done before step 5 so that the fuzzing runs faster)
    Measure speed against NBIS (0.11 s for 2.25 megapixels).
    - Where the time went: 94 % in `join_lets`, 4 % in Huffman decoding.
@@ -604,7 +615,10 @@ Things the research above did not have, all confirmed against NBIS:
      30 before). Five more minutes, 63,000 inputs: no crash.
    - Not done: Huffman decoding is still bit by bit, as in NBIS (now about
      12 % of the time).
-7. Update the docs listed above.
+7. ✅ (2026-09-30) Update the docs listed above: `formats.md` has "WSQ as
+   decoded"; `security.md`, `fuzzing.md`, `architecture.md`, `decisions.md`
+   and `plan.md` describe the Rust decoder; `native/nbis_ref/README.md`
+   describes the reference.
 
 Open question for later: support restart intervals (DRI/RSTm)? The spec
 defines them, and NBIS and the FBI encoders don't use them. There is no test

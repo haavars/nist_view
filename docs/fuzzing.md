@@ -86,6 +86,23 @@ and was replaced; the Rust decoders, header readers and OpenJPEG had none.
 NBIS WSQ was replaced by a safe-Rust decoder on 2026-09-30; the `wsq` target
 fuzzes that decoder from then on.
 
+## Results for the Rust WSQ decoder (2026-09-30, 115 minutes per target)
+
+x86_64 Linux, clang 23.1, both targets running side by side.
+
+| Target | Processes | Inputs | Result |
+|---|---|---|---|
+| `wsq` | 10 | 1,504,967 | no crash, timeout or out-of-memory |
+| `wsq_diff` | 12 | 287,115 | no difference from NBIS, no memory error in NBIS |
+
+`replay.sh` afterwards, over 1,141 corpus and crash files: nothing that NBIS
+decodes cleanly and the Rust decoder rejects. It did show a sixth NBIS bug, a
+`memcpy` of −1 bytes for a comment of length 1.
+
+An earlier ten-minute run, with the full 100-megapixel limit, reported one
+timeout: a 12 KB file declaring 17 megapixels. That led to the lower limit
+under cargo-fuzz described above.
+
 A temporary differential target compared the Rust lossless JPEG decoder with
 NBIS: wherever NBIS decoded an image, ours had to produce the same pixels.
 Apart from NBIS's own memory errors, it found one disagreement: NBIS ignores
@@ -94,12 +111,11 @@ honour. The target was removed with the NBIS decoder.
 
 ## Next
 
-- A `wsq_diff` differential target, the Rust WSQ decoder against NBIS
-  (`native/nbis_ref`): plan in [`wsq-port.md`](wsq-port.md), step 5.
 - Differential target against libjpeg-turbo 3.2 (decided; not written yet):
   build libjpeg-turbo with ASan, link it only into the fuzz crate, correct
   NBIS's table class before handing it the bytes, request no colour
   conversion, and assert identical pixels.
-- Longer runs (hours per target) and a scheduled CI job.
-- Minimised regression inputs in `fuzz/regressions/<format>/` (run by
-  `NistView.DecoderTest`); see [`security.md`](security.md#open-items).
+- Longer runs (hours per target) for `jpegl`, `jp2` and `headers`, and a
+  scheduled CI job. The WSQ targets have not been run on arm64.
+- Regression inputs for lossless JPEG in `fuzz/regressions/jpegl/` (WSQ has
+  them); see [`security.md`](security.md#open-items).

@@ -21,4 +21,5 @@ Root causes are in `docs/wsq-port.md`.
 | `nbis-heap-overflow-in-transform-table.wsq` | heap buffer overflow in `getc_transform_table` (filter length 0) | fuzzing, minimised from 3,794 bytes |
 | `nbis-null-write-in-bit-reader.wsq` | write through a null pointer in `getc_nextbits_wsq` (a marker where one more bit of a longer read is due) | fuzzing, minimised from 2,547 bytes; 3 bytes of block data left |
 | `nbis-out-of-bounds-in-unquantize.wsq` | out-of-bounds access in `unquantize` (a width of 64,000: subband positions above 32,767 wrap in its `short`s) | fuzzing, minimised from 20,731 bytes; no block data left |
+| `nbis-negative-size-comment-length-1.wsq` | `memcpy` with a size of −1 in `getc_bytes` (a comment segment of length 1) | made by hand: six bytes |
 | `nbis-global-overflow-huffman-table-id.wsq` | global buffer overflow in `getc_huffman_table_wsq` (table id 8) | made from `test/fixtures/synthetic.wsq`: its headers and tables with the id changed |
