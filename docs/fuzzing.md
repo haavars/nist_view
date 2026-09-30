@@ -2,14 +2,14 @@
 
 `native/nist_codecs/fuzz` is a cargo-fuzz crate. The targets call the decoders
 directly (the `nist_codecs` library with its `nif` feature off), and the run
-script instruments the C code (NBIS, OpenJPEG) with AddressSanitizer too, so
+script instruments the C code (OpenJPEG) with AddressSanitizer too, so
 memory errors in C are caught where they happen, not only when they crash.
 
 ## Targets
 
 | Target | Code under test |
 |---|---|
-| `wsq` | `nbis::decode_wsq` (NBIS C, patched, from `native/nbis_ref`) |
+| `wsq` | `wsq::decode` (safe Rust) |
 | `jpegl` | `jpegl::decode` (safe Rust) |
 | `jp2` | `jp2::decode` (OpenJPEG C via `jpeg2k`, own 8-bit conversion) |
 | `headers` | `headers::{wsq, jpeg, jp2}` (Rust header readers) |
@@ -46,6 +46,10 @@ native/nist_codecs/fuzz/triage.sh wsq       # group crashes by ASan summary and 
   `CFLAGS=-fsanitize=address,fuzzer-no-link`, and runs libFuzzer in fork mode
   with `-ignore_crashes=1`, so one run collects every distinct crash in
   `fuzz/artifacts/<target>/` instead of stopping at the first.
+- Under cargo-fuzz (`cfg(fuzzing)`) the size limit is 4 megapixels instead
+  of 100 (`MAX_PIXELS`). A WSQ or JPEG 2000 file of a few hundred bytes can
+  declare a huge image, and decoding it takes seconds; with the full limit
+  the fuzzer spends its time there and reports timeouts.
 - `triage.sh` replays up to N artifacts and prints one line per distinct
   AddressSanitizer summary and first non-runtime stack frame.
 
@@ -63,6 +67,8 @@ See [`security.md`](security.md#fuzzing-results). In short: NBIS WSQ had one
 stack overflow (patched), and, correcting an earlier claim, four more bugs
 still crash the patched build (see [`wsq-port.md`](wsq-port.md)); NBIS lossless JPEG had many bugs
 and was replaced; the Rust decoders, header readers and OpenJPEG had none.
+NBIS WSQ was replaced by a safe-Rust decoder on 2026-09-30; the `wsq` target
+fuzzes that decoder from then on.
 
 A temporary differential target compared the Rust lossless JPEG decoder with
 NBIS: wherever NBIS decoded an image, ours had to produce the same pixels.
@@ -72,8 +78,8 @@ honour. The target was removed with the NBIS decoder.
 
 ## Next
 
-- Replace NBIS WSQ with a safe-Rust decoder and a `wsq_diff` differential
-  target against NBIS (plan in [`wsq-port.md`](wsq-port.md)).
+- A `wsq_diff` differential target, the Rust WSQ decoder against NBIS
+  (`native/nbis_ref`): plan in [`wsq-port.md`](wsq-port.md), step 5.
 - Differential target against libjpeg-turbo 3.2 (decided; not written yet):
   build libjpeg-turbo with ASan, link it only into the fuzz crate, correct
   NBIS's table class before handing it the bytes, request no colour

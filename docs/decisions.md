@@ -120,6 +120,12 @@ images under 33 pixels in either direction (with the standard filters), so
 there is no defined output to match. The Rust decoder rejects them rather
 than invent a result.
 
+**WSQ filters of more than 32 taps are refused.** NBIS reads filter lengths
+up to 255, and decoding time grows with the length: a 100-megapixel image
+would take minutes. 32 is the specification's maximum, and real files use 9
+and 7. This is the only place where the Rust decoder rejects input that NBIS
+decodes correctly.
+
 **Two decoders in one: `decode` and `decode_strict`.** The public `decode`
 accepts fill bytes before a marker and a `NIST_COM` without `PPI`.
 `decode_strict` rejects them as NBIS does, which gives the differential tests

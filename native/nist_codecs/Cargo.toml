@@ -12,9 +12,6 @@ crate-type = ["cdylib", "rlib"]
 rustler = { version = "0.38", optional = true }
 png = "0.18"
 jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys"] }
-# Temporary, until wsq.rs replaces nbis.rs (docs/wsq-port.md, step 4). After
-# that nbis_ref is a development-time reference only.
-nbis_ref = { path = "../nbis_ref" }
 
 [features]
 default = ["nif"]
@@ -22,3 +19,7 @@ default = ["nif"]
 # directly (see fuzz/).
 nif = ["dep:rustler"]
 
+
+[lints.rust]
+# cargo-fuzz builds with `--cfg fuzzing` (see MAX_PIXELS).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

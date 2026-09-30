@@ -8,7 +8,6 @@
 pub mod headers;
 pub mod jp2;
 pub mod jpegl;
-pub mod nbis;
 pub mod wsq;
 
 #[cfg(feature = "nif")]
@@ -16,7 +15,14 @@ mod nif;
 
 /// Largest image any decoder will allocate for: 100 megapixels, above a
 /// full palm at 1000 ppi.
+#[cfg(not(fuzzing))]
 pub const MAX_PIXELS: u64 = 100_000_000;
+
+/// Under cargo-fuzz: decoding takes time in proportion to the size an image
+/// declares, however short the file, and a fuzzer should not spend its time
+/// there. 4 megapixels holds every seed image.
+#[cfg(fuzzing)]
+pub const MAX_PIXELS: u64 = 4_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {

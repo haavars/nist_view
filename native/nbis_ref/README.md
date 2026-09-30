@@ -7,8 +7,9 @@ see the licence header in each file.
 
 It exists to check the safe-Rust WSQ decoder against: `nbis_ref::decode_wsq`
 is the reference for differential tests and fuzzing (`docs/wsq-port.md`). It
-has known memory bugs and must not ship. Until the Rust decoder lands (step 4
-of the port), `nist_codecs::nbis` still calls it.
+has known memory bugs and must not ship: neither `nist_codecs` nor
+`nist_decode` depends on it. Its own tests (`tests/compare.rs`) depend on
+`nist_codecs` to compare the two decoders.
 
 | Here | What |
 |---|---|
@@ -84,7 +85,7 @@ replace this code with a safe-Rust decoder, not to patch it further.
   that to a no-op in `c/glue.c`.
 - `fatalerr` and `syserr` call `exit()`. The decode path reaches them only when
   `malloc` fails inside the NISTCOM helpers.
-- In the application this code runs only in the `nist_decode` helper process,
-  never in the BEAM, and only until the Rust decoder replaces it.
+- The application used this code, in the `nist_decode` helper process, until
+  the Rust decoder replaced it on 2026-09-30.
 - The files were read-only in the NBIS archive; they were made writable to
   apply the patches.

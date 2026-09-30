@@ -106,11 +106,7 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 Revised in M5; details in [architecture.md](architecture.md#images).
 - **Rust library** `native/nist_codecs`: the decoders, header readers and PNG encoding. Its NIF (`NistView.Codecs`, behind the default `nif` feature) exposes only safe Rust: `encode_png/4` and `ycbcr_to_rgb/1`.
 - **Decoding runs out of process**, in the `nist_decode` helper (`native/nist_decode`, built by the `:nist_decode` Mix compiler), one process per image through `NistView.Decoder`: `decode(:wsq | :jpegl | :jp2, bytes) :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. Crashes and timeouts become errors.
-- **WSQ:** vendored NBIS 5.0.0 (23 files, patched; `native/nbis_ref/README.md`).
-  - `__NBISLE__` must be defined on little-endian targets.
-  - Its globals need a mutex.
-  - `fprintf` is silenced.
-  - Output is bit-identical to `dwsq`.
+- **WSQ:** our own safe-Rust decoder (`src/wsq.rs`), since 2026-09-30. It follows NBIS 5.0.0's behaviour, and its output is identical to NBIS built without fused multiply-add. NBIS's decoder had memory bugs and is kept only as the test reference (`native/nbis_ref`, development only). Details: [wsq-port.md](wsq-port.md).
 - **Lossless JPEG:** our own safe-Rust decoder (`src/jpegl.rs`). NBIS's decoder had many memory bugs and was removed. libjpeg-turbo 3.2 is the reference for testing (dev-only).
 - **JPEG 2000:** `jpeg2k` with the bundled OpenJPEG, and our own 8-bit conversion. Output is bit-identical to `opj_decompress`. Its pure-Rust `openjp2` backend could remove this C dependency later.
 - Every decoder reads the header first and refuses images over 100 megapixels.
@@ -183,7 +179,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust written and verified against NBIS, not yet switched on ([wsq-port.md](wsq-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ in use, differential fuzzing still to do ([wsq-port.md](wsq-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -261,7 +257,7 @@ Details, fuzzing results and open items: [security.md](security.md).
   - Tests cover the launch token and opening by id, both before and after the window connects.
 - **Not yet checked:**
   - The CI workflow (`.github/workflows/desktop.yml`, five targets through `tauri-action`) has never run.
-  - Windows is the biggest risk: the vendored NBIS C sources have not been compiled with MSVC.
+  - Windows is the biggest risk: the vendored NBIS C sources have not been compiled with MSVC. *(2026-09-30: no longer part of the build; the only C left is OpenJPEG.)*
   - The file association flow is untested on a real double-click; it needs the app installed.
 
 **M5 status (2026-09-29, in progress).** Full details: [security.md](security.md), [fuzzing.md](fuzzing.md).
@@ -270,13 +266,14 @@ Details, fuzzing results and open items: [security.md](security.md).
   - NBIS lossless JPEG: many heap and stack overflows, a use-after-free and segfaults.
   - OpenJPEG and the Rust code: no crashes.
 - **Decision:** decode out of process. The `nist_decode` helper runs one process per image with a timeout. The NIF has no C left.
+- **WSQ (2026-09-30):** a safe-Rust decoder replaces NBIS in the helper, as for lossless JPEG. Identical pixels to NBIS on all 136 BioCTS WSQ streams.
 - **Lossless JPEG:** a new safe-Rust decoder replaces NBIS.
   - Pixel-identical on the fixtures, which libjpeg-turbo 3.2 also decodes identically.
   - 4.8 million fuzz inputs without a crash.
   - NBIS-produced files need the table-class quirk handled (see [formats.md](formats.md)).
 - **Security review:** the controls in place are documented and checked on the built release.
 - **Still to do** (see [security.md](security.md#open-items)):
-  - **a safe-Rust WSQ decoder replacing NBIS** (written and identical to NBIS on all samples; still to do: switch the application to it, differential fuzzing: [wsq-port.md](wsq-port.md))
+  - the rest of the WSQ port: the application decodes WSQ in safe Rust since 2026-09-30 (identical to NBIS on all samples); differential fuzzing, regression inputs and speed are still to do ([wsq-port.md](wsq-port.md))
   - the libjpeg-turbo differential fuzz target
   - longer fuzz runs
   - minimised regression inputs

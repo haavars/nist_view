@@ -8,7 +8,8 @@
 //! error. docs/wsq-port.md describes the NBIS behaviour reproduced here;
 //! the parts that look odd are deliberate:
 //!
-//! * Segment lengths are ignored, except for Huffman tables and comments.
+//! * Segment lengths are ignored, except for Huffman tables and comments
+//!   (and by the separate scan for the resolution, `nistcom_ppi`).
 //! * The arithmetic is `f32` with the intermediate `f64` steps of the C
 //!   source, in its order of operations, and never `mul_add`.
 //! * The wavelet synthesis (`join_lets`) walks the whole image buffer with
@@ -33,6 +34,10 @@ const COM: u16 = 0xFFA8;
 const INVALID: Error = Error::InvalidWsq;
 
 const MAX_HUFFMAN_TABLES: usize = 8;
+/// The longest filter the specification allows. NBIS accepts up to 255
+/// taps, but decoding time grows with the length, and no encoder writes
+/// anything but the 9 and 7 tap pair.
+const MAX_FILTER_LENGTH: usize = 32;
 /// Subbands of the quantisation tree; the last four are never transmitted.
 const SUBBANDS: usize = 64;
 const CODED_SUBBANDS: usize = 60;
@@ -201,7 +206,7 @@ impl Transform {
         let (hisz, losz) = (reader.u8()? as usize, reader.u8()? as usize);
 
         // NBIS writes 256 coefficients into an empty array for a length of 0.
-        if hisz == 0 || losz == 0 {
+        if hisz == 0 || losz == 0 || hisz > MAX_FILTER_LENGTH || losz > MAX_FILTER_LENGTH {
             return Err(INVALID);
         }
 
@@ -1510,6 +1515,17 @@ mod tests {
         assert_eq!(even.lo, [-3.0, -3.0]);
 
         assert!(read(4, 2, &[(0, 1), (0, 2)]).is_err());
+    }
+
+    #[test]
+    fn filters_longer_than_the_specification_allows_are_errors() {
+        let read = |hisz: u8, losz: u8| {
+            let data = [vec![0, 0, hisz, losz], vec![0; 6 * 256]].concat();
+            Transform::read(&mut Reader { data: &data, pos: 0 }).is_ok()
+        };
+
+        assert!(read(32, 31) && read(31, 32) && read(1, 32));
+        assert!(!read(33, 7) && !read(9, 33) && !read(255, 255));
     }
 
     #[test]

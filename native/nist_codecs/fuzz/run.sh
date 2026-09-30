@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fuzzes one decoder with AddressSanitizer in both the Rust and the C code
-# (NBIS, OpenJPEG). Needs nightly Rust, cargo-fuzz and an LLVM clang with
+# (OpenJPEG). Needs nightly Rust, cargo-fuzz and an LLVM clang with
 # libFuzzer (Homebrew `llvm` on macOS).
 #
 #   fuzz/run.sh wsq 600      # target, seconds

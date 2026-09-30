@@ -23,9 +23,10 @@ network attackers (the viewer makes no network connections).
 | Parser in pure Elixir; records sliced by declared length; parsing is total (errors are values, never crashes) | `NistView.Parser` |
 | Property tests: generated transactions round-trip; truncation, corruption and arbitrary bytes never raise | `test/nist_view/parser_property_test.exs` |
 | Decoders read the image size from the header and refuse images over 100 megapixels before allocating | `native/nist_codecs/src/headers.rs`, `check_dimensions` |
-| **C decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
+| A decode is bounded, not cheap: a WSQ file of a few hundred bytes can declare 100 megapixels and then costs 10 to 30 seconds of CPU and about 1 GB in the helper (measured; filters are capped at the specification's 32 taps to keep it there). The timeout below is what ends anything slower | `native/nist_codecs/src/wsq.rs`, [`wsq-port.md`](wsq-port.md#found-while-porting) |
+| **Image decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. Only JPEG 2000 is still decoded by C code (OpenJPEG). A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
 | Lossless JPEG decoded by our own safe-Rust decoder instead of NBIS | `native/nist_codecs/src/jpegl.rs` |
-| NBIS WSQ: one bug found by fuzzing patched. **Four more are still open** (2026-09-30); a safe-Rust replacement is planned | `native/nbis_ref/README.md`, [`wsq-port.md`](wsq-port.md) |
+| WSQ decoded by our own safe-Rust decoder instead of NBIS (2026-09-30), and tested to give the same pixels. NBIS had five memory bugs reachable from a file; it is now only a development-time reference | `native/nist_codecs/src/wsq.rs`, `native/nbis_ref/README.md`, [`wsq-port.md`](wsq-port.md) |
 | Fuzzing of every decoder with AddressSanitizer on both Rust and C | [`fuzzing.md`](fuzzing.md) |
 | Format detection by content, so a label cannot route data to the wrong decoder | `NistView.ImageFormat` |
 | Atoms are never created from input (`String.to_existing_atom` only for known values) | `ViewerLive` |
@@ -77,12 +78,12 @@ than crash.
 
 ## Open items
 
-0. **Replace NBIS WSQ with safe Rust.** NBIS WSQ still has four
-   memory bugs reachable from a file, plus latent ones (see
-   [`wsq-port.md`](wsq-port.md)). Research and design are done; the
-   implementation is not started.
+0. **Finish the WSQ port.** The application decodes WSQ in safe Rust since
+   2026-09-30 (steps 1 to 4 of [`wsq-port.md`](wsq-port.md)). Still to do:
+   differential fuzzing against NBIS, long fuzz runs, and minimised
+   regression inputs from the NBIS crashes.
 1. **Sandbox the helper.** Out-of-process decoding contains crashes, but a
-   memory-corruption exploit in NBIS or OpenJPEG would still run with the
+   memory-corruption exploit in OpenJPEG would still run with the
    user's privileges. Next step: drop privileges in `nist_decode` (macOS
    sandbox profile, Linux seccomp/landlock, Windows job object and low
    integrity level). It needs only stdin/stdout.

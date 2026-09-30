@@ -1,6 +1,6 @@
 #!/bin/sh
 # Groups a target's crash artifacts by their AddressSanitizer summary and
-# top NBIS/OpenJPEG frame, so each distinct bug shows up once.
+# top decoder frame, so each distinct bug shows up once.
 #
 #   fuzz/triage.sh jpegl [max-artifacts]
 set -u

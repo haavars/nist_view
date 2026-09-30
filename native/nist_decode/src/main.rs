@@ -1,7 +1,9 @@
 //! Decodes images for NistView in a process of its own, so that a memory
-//! error in a C decoder (NBIS WSQ, OpenJPEG) on a hostile file can only take
-//! down this process, never the BEAM. See `NistView.Decoder`. Lossless JPEG
-//! is decoded in safe Rust (`nist_codecs::jpegl`).
+//! error in the C decoder (OpenJPEG, for JPEG 2000) on a hostile file can
+//! only take down this process, never the BEAM. See `NistView.Decoder`. WSQ
+//! and lossless JPEG are decoded in safe Rust (`nist_codecs::wsq`,
+//! `nist_codecs::jpegl`); for them the process contains a panic, an
+//! allocation failure or a decode that takes too long.
 //!
 //! The protocol is Erlang's `{:packet, 4}` on stdin and stdout: every
 //! message is a 4-byte big-endian length followed by that many bytes.
@@ -16,7 +18,7 @@
 
 use std::io::{self, Read, Write};
 
-use nist_codecs::{jp2, jpegl, nbis, ColorSpace, Error, Pixels};
+use nist_codecs::{jp2, jpegl, wsq, ColorSpace, Error, Pixels};
 
 fn main() {
     let mut stdin = io::stdin().lock();
@@ -24,7 +26,7 @@ fn main() {
 
     while let Some(request) = read_packet(&mut stdin) {
         let reply = match request.split_first() {
-            Some((b'W', data)) => encode(nbis::decode_wsq(data)),
+            Some((b'W', data)) => encode(wsq::decode(data)),
             Some((b'L', data)) => encode(jpegl::decode(data)),
             Some((b'J', data)) => encode(jp2::decode(data)),
             _ => b"Eunknown_format".to_vec(),

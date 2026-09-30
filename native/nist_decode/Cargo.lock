@@ -116,18 +116,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "nbis_ref"
-version = "0.1.0"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "nist_codecs"
 version = "0.1.0"
 dependencies = [
  "jpeg2k",
- "nbis_ref",
  "png",
 ]
 

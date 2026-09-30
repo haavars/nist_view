@@ -1,9 +1,9 @@
 # WSQ in safe Rust — research and plan
 
-Status 2026-09-30: **steps 1 to 3 of 7 done** (see [Steps](#steps)). The
-decoder is written (`native/nist_codecs/src/wsq.rs`) and gives the same
-pixels as NBIS on every sample image, but the application still decodes with
-NBIS until step 4. This document is the hand-over: everything found so far,
+Status 2026-09-30: **steps 1 to 4 of 7 done** (see [Steps](#steps)). The
+decoder (`native/nist_codecs/src/wsq.rs`) gives the same pixels as NBIS on
+every sample image, and the application decodes WSQ with it. NBIS is no
+longer linked into anything that ships. This document is the hand-over: everything found so far,
 the design decided, and the steps to build it. What writing the decoder
 showed that the research had missed is under
 [Found while porting](#found-while-porting). Related: [security.md](security.md),
@@ -238,7 +238,9 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
   - `lofilt`, `losz` odd: `lo[a+k] = s(k)·c[k]`, mirrored for `k > 0`.
   - `lofilt`, `losz` even: `lo[a+k+1] = s(k+1)·c[k]` and
     `lo[a−k] = lo[a+k+1]`.
-  - A sign byte ≠ 0 negates. A length of 0 is an error (the NBIS overflow).
+  - A sign byte ≠ 0 negates. A length of 0 is an error (the NBIS overflow),
+    and so is a length above 32, the specification's maximum (NBIS accepts
+    up to 255).
 - Quantisation table: bin centre C, then 64 × (Q, Z), all scaled values.
 - **DHT:** `bytes_left = Lh − 2`; if ≤ 0, error. Then repeat: id, 16 counts,
   `n = Σcounts` (more than 257 is an error, and a table with exactly 257 is
@@ -398,6 +400,20 @@ Things the research above did not have, all confirmed against NBIS:
   the limit check (`ipc > ipc_mx`) runs before a coefficient is stored, not
   after. The Rust decoder does the same, and errors only when the store would
   leave the buffer (which is where NBIS writes out of bounds).
+- **Decoding time follows the declared size, not the file size.** A stream
+  may stop early, and the coefficients it does not deliver are zero (NBIS
+  leaves them uninitialised). The whole image is still reconstructed. So a
+  file of a few hundred bytes can declare 100 megapixels and cost about 10
+  seconds and 0.8 GB (measured, x86_64, before tuning); NBIS behaves the
+  same, about 1.6 times faster. The helper's 60-second timeout and
+  one process per image contain it. The first fuzz run of the Rust decoder
+  reported this as a timeout.
+- **Filter lengths are capped at 32, where NBIS allows 255.** This is the one
+  place where the decoder is deliberately stricter than NBIS on input NBIS
+  handles correctly. Time grows with the filter length: 100 megapixels take
+  27 seconds with 32 taps and would take about 3 minutes with 255. The
+  specification's maximum is 32 (31 for odd lengths), and encoders write the
+  9 and 7 tap pair only.
 - The BioCTS files contain 136 WSQ streams, two more than the 134 records
   labelled as WSQ: in `fail-*` files, one is labelled `JPEGB` and one is a
   Type-4 record with compression code 2.
@@ -424,8 +440,7 @@ Things the research above did not have, all confirmed against NBIS:
       depend on uninitialised memory
   - It exposes `decode_wsq(&[u8]) -> Option<(w, h, ppi, Vec<u8>)>` (unsafe
     FFI inside, mutex for the globals).
-  - Never a dependency of `nist_codecs` or `nist_decode` (from step 4 on;
-    until then `nist_codecs::nbis` calls it).
+  - Never a dependency of `nist_codecs` or `nist_decode`.
 - **`decode` and `decode_strict`.** `decode` is the public decoder, with the
   two leniencies (fill bytes before a marker that ends a block, `NIST_COM`
   without `PPI`). `decode_strict` fails on those as NBIS does, so that
@@ -512,8 +527,23 @@ Things the research above did not have, all confirmed against NBIS:
      NBIS on the 48 sample images (171 ms against 115 ms for the largest,
      2.25 megapixels). Every sample access in `join_lets` is bounds-checked;
      step 6 looks at that.
-4. Switch `nist_decode` and the fuzz target; delete `nbis.rs` and the
-   `nbis_ref` dependency of `nist_codecs`; `mix precommit`.
+4. ✅ (2026-09-30) Switch `nist_decode` and the fuzz target; delete `nbis.rs`
+   and the `nbis_ref` dependency of `nist_codecs`; `mix precommit`.
+   - `nist_decode` and the `wsq` fuzz target call `wsq::decode`.
+     `nist_codecs` has no build script and no C of its own; `nbis_ref` is
+     reachable only from its own tests.
+   - `headers::wsq` went with `nbis.rs`: the decoder reads its own frame
+     header and checks the size before allocating.
+   - Through the application (`NistView.Decoder`), all 48 distinct sample
+     images are identical to the NBIS reference output; the pinned hashes did
+     not change.
+   - The 27 inputs that crash NBIS all return an error.
+   - First fuzz runs of the Rust decoder (13 minutes, 8 processes, about
+     23,000 inputs): no crash and no out-of-memory. One timeout, a 17
+     megapixel image declared by a 12 KB file, which led to the size limit
+     under cargo-fuzz and to the notes on decoding time above. The fuzzer
+     runs this decoder at 10 to 30 inputs per second, against about 200 for
+     NBIS: a reason to do step 6 (speed) before the long runs of step 5.
 5. Add the `wsq_diff` target and the corpus replay script; fuzz; minimise
    and commit the regression inputs.
 6. Measure speed against NBIS (0.11 s for 2.25 megapixels).
