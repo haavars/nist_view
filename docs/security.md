@@ -25,7 +25,7 @@ network attackers (the viewer makes no network connections).
 | Decoders read the image size from the header and refuse images over 100 megapixels before allocating | `native/nist_codecs/src/headers.rs`, `check_dimensions` |
 | **C decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
 | Lossless JPEG decoded by our own safe-Rust decoder instead of NBIS | `native/nist_codecs/src/jpegl.rs` |
-| NBIS WSQ bug found by fuzzing patched | `vendor/nbis/README.md` |
+| NBIS WSQ: one bug found by fuzzing patched. **Four more are still open** (2026-09-30); a safe-Rust replacement is planned | `vendor/nbis/README.md`, [`wsq-port.md`](wsq-port.md) |
 | Fuzzing of every decoder with AddressSanitizer on both Rust and C | [`fuzzing.md`](fuzzing.md) |
 | Format detection by content, so a label cannot route data to the wrong decoder | `NistView.ImageFormat` |
 | Atoms are never created from input (`String.to_existing_atom` only for known values) | `ViewerLive` |
@@ -64,7 +64,7 @@ Ten-minute campaigns per decoder with AddressSanitizer on the C code
 
 | Decoder | Result | Action |
 |---|---|---|
-| NBIS WSQ | 1 bug: stack buffer overflow in `huffman_decode_data_mem` (unbounded code-length loop over `maxcode[]`), hit by 23 inputs | Patched (bounded loop, value index check). Re-run after the patch: 0 crashes |
+| NBIS WSQ | Stack buffer overflow in `huffman_decode_data_mem` (unbounded code-length loop over `maxcode[]`), hit by 23 inputs. **Correction (2026-09-30):** the "0 crashes after the patch" result was wrong. The 9 saved inputs in `fuzz/artifacts/wsq/` still crash the patched build: NULL write in `getc_nextbits_wsq` (6), heap overflow in `unquantize` (1), heap overflow in `getc_transform_table` (1), global overflow in `getc_huffman_table_wsq` (1) | First bug patched. The rest are to be fixed by replacing NBIS with a safe-Rust decoder; root causes and plan in [`wsq-port.md`](wsq-port.md) |
 | NBIS lossless JPEG | Many bugs: heap buffer overflows (`decode_data`, `getc_byte`, `jpegl_decode_mem`), stack buffer overflow and underflow and a use-after-free in `update_IMG_DAT_decode`, segfaults; 797 crashing inputs in 10 minutes | Replaced by a safe-Rust decoder; NBIS code removed |
 | Rust lossless JPEG (new) | 0 crashes in 4.8 million inputs | — |
 | OpenJPEG (JPEG 2000) | 0 crashes | — |
@@ -77,6 +77,10 @@ than crash.
 
 ## Open items
 
+0. **Replace NBIS WSQ with safe Rust.** NBIS WSQ still has four
+   memory bugs reachable from a file, plus latent ones (see
+   [`wsq-port.md`](wsq-port.md)). Research and design are done; the
+   implementation is not started.
 1. **Sandbox the helper.** Out-of-process decoding contains crashes, but a
    memory-corruption exploit in NBIS or OpenJPEG would still run with the
    user's privileges. Next step: drop privileges in `nist_decode` (macOS

@@ -4,7 +4,7 @@ A cross-platform desktop viewer for ANSI/NIST-ITL transaction files (`.nst`, `.a
 
 Stack: **Elixir/Phoenix LiveView** for the UI and parsing, **one Rust NIF** for image codecs, and **Tauri + ElixirKit** as the desktop shell.
 
-Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log).
+Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan).
 
 ---
 
@@ -183,7 +183,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust researched ([wsq-port.md](wsq-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -208,7 +208,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 - Still to run: the Prüm samples, whose Type-9 is M1.
 
 **M2 status (2026-09-29).**
-- **WSQ:** all 47 distinct WSQ images in the BioCTS set decode bit-identically to NBIS 5.0.0 `dwsq`, built from the same release.
+- **WSQ:** all 47 distinct WSQ images in the BioCTS set decode bit-identically to NBIS 5.0.0 `dwsq`, built from the same release. *(2026-09-30: only when both are built by clang on arm64 with FMA contraction; see [wsq-port.md](wsq-port.md#nbis-output-depends-on-the-compiler-fma).)*
 - **JPEG 2000:** `jpeg2k` 0.10 with the bundled OpenJPEG. All 12 distinct JP2/JP2L images in BioCTS decode bit-identically to `opj_decompress` 2.5.4. They are all 8-bit greyscale or sRGB.
   - Components are converted to 8-bit by our own code, not the crate's `get_pixels`. This handles signed samples, precisions above 8 bits (scaled), subsampled components (replicated) and sYCC.
   - CMYK and e-sYCC are refused.
@@ -266,7 +266,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 
 **M5 status (2026-09-29, in progress).** Full details: [security.md](security.md), [fuzzing.md](fuzzing.md).
 - **Fuzzing:** cargo-fuzz targets for WSQ, lossless JPEG, JPEG 2000 and the header readers, with AddressSanitizer on the C code too (`native/nist_codecs/fuzz`).
-  - NBIS WSQ: one stack overflow, patched; clean afterwards.
+  - NBIS WSQ: one stack overflow, patched. *Correction (2026-09-30):* not clean afterwards; four more bugs still crash it. See [wsq-port.md](wsq-port.md).
   - NBIS lossless JPEG: many heap and stack overflows, a use-after-free and segfaults.
   - OpenJPEG and the Rust code: no crashes.
 - **Decision:** decode out of process. The `nist_decode` helper runs one process per image with a timeout. The NIF has no C left.
@@ -276,6 +276,7 @@ Details, fuzzing results and open items: [security.md](security.md).
   - NBIS-produced files need the table-class quirk handled (see [formats.md](formats.md)).
 - **Security review:** the controls in place are documented and checked on the built release.
 - **Still to do** (see [security.md](security.md#open-items)):
+  - **a safe-Rust WSQ decoder replacing NBIS** (research and design done: [wsq-port.md](wsq-port.md))
   - the libjpeg-turbo differential fuzz target
   - longer fuzz runs
   - minimised regression inputs

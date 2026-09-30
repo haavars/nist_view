@@ -51,7 +51,8 @@ CC=$(brew --prefix llvm)/bin/clang CFLAGS="-fsanitize=address,fuzzer-no-link" \
 ## Results (2026-09-29, 10 minutes per target)
 
 See [`security.md`](security.md#fuzzing-results). In short: NBIS WSQ had one
-stack overflow (patched, clean afterwards); NBIS lossless JPEG had many bugs
+stack overflow (patched), and, correcting an earlier claim, four more bugs
+still crash the patched build (see [`wsq-port.md`](wsq-port.md)); NBIS lossless JPEG had many bugs
 and was replaced; the Rust decoders, header readers and OpenJPEG had none.
 
 A temporary differential target compared the Rust lossless JPEG decoder with
@@ -62,6 +63,8 @@ honour. The target was removed with the NBIS decoder.
 
 ## Next
 
+- Replace NBIS WSQ with a safe-Rust decoder and a `wsq_diff` differential
+  target against NBIS (plan in [`wsq-port.md`](wsq-port.md)).
 - Differential target against libjpeg-turbo 3.2 (decided; not written yet):
   build libjpeg-turbo with ASan, link it only into the fuzz crate, correct
   NBIS's table class before handing it the bytes, request no colour

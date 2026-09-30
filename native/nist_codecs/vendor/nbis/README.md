@@ -35,6 +35,14 @@ Every change is marked with a `nist_view:` comment.
 |---|---|---|
 | `src/wsq/decoder.c` `decode_data_mem`, `decode_data_file` | Stop after `MAX_HUFFBITS` bits (`-100`); check the Huffman value index against `MAX_HUFFCOUNTS_WSQ` (`-101`) | A corrupt Huffman table made the code-length loop read past the 17-entry `maxcode[]` stack array (stack buffer overflow, found by fuzzing) |
 
+## Known unpatched bugs
+
+Fuzzing inputs still crash this code after the patch above: a NULL write in
+`getc_nextbits_wsq`, heap overflows in `getc_transform_table` and
+`unquantize`, and a global overflow in `getc_huffman_table_wsq`. There are
+latent ones too. Root causes are in `docs/wsq-port.md`. The plan is to
+replace this code with a safe-Rust decoder, not to patch it further.
+
 ## Notes for anyone changing this
 
 - `__NBISLE__` must be defined on little-endian targets (`build.rs` does it),
