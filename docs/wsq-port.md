@@ -1,6 +1,7 @@
 # WSQ in safe Rust — research and plan
 
-Status 2026-09-30: **steps 1 to 4 of 7 done** (see [Steps](#steps)). The
+Status 2026-09-30: **steps 1 to 4 and 6 of 7 done** (see [Steps](#steps));
+step 5, the differential fuzzing, is next. The
 decoder (`native/nist_codecs/src/wsq.rs`) gives the same pixels as NBIS on
 every sample image, and the application decodes WSQ with it. NBIS is no
 longer linked into anything that ships. This document is the hand-over: everything found so far,
@@ -164,12 +165,17 @@ optimisation level, and with contraction it depends on which expressions a
 compiler chooses to fuse. SHA-256 of the 48 `off` outputs concatenated in
 file name order: `7c0ecd2269db2ca8df743343b2a45ff7896283c26d5f86be170779bd07d95f35`.
 
-On arm64 macOS (2026-09-30), `nbis_ref` built with `-ffp-contract=off` gives
-the two hashes pinned in `test/nist_view/biocts_sample_test.exs`, which were
-computed on x86_64 Linux: `mix precommit` passes there on the step 1 commit
-with the BioCTS samples present. The 48-image checksum above has not been
-compared on arm64; the differential test of step 3 covers all the images on
-whichever machine runs it.
+On arm64 macOS (2026-09-30, macOS 27.0.1, Apple clang 21.0.0), NBIS built
+with `-ffp-contract=off` gives the same 48-image checksum, and `nbis_ref`
+gives the two hashes pinned in `test/nist_view/biocts_sample_test.exs`, which
+were computed on x86_64 Linux. So the reference does not depend on the
+architecture either.
+
+The Rust decoder was checked on arm64 at the step 4 commit: `mix precommit`
+passes with the BioCTS samples present, and the differential test
+(`native/nbis_ref/tests/compare.rs`) passes on all 136 streams with the same
+number of generated streams accepted per filter pair as on Linux. The bulk
+paths of step 6 have not been run on arm64 yet.
 
 **Decision:** the Rust decoder uses plain IEEE `f32`/`f64` operations, no
 `mul_add`. It then gives the same output on every platform, and its reference
@@ -348,6 +354,9 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
   2. `join_lets(image at node offset ← scratch; len1 = leny, len2 = lenx, pitch width, stride 1, inv = inv_rw)`
 - **The scratch writes start at offset 0 of the scratch buffer, not at the
   node's offset.**
+- *(Step 6 added a bulk path for the middle of each line; see
+  [Steps](#steps). What follows describes the literal port, which still
+  handles the ends of every line and everything unusual.)*
 - **Port `join_lets` as pointer arithmetic over the whole buffers:** `isize`
   offsets and a bounds check on every read and write, erroring only when an
   access leaves the buffer. Do **not** copy lines out:
@@ -403,17 +412,19 @@ Things the research above did not have, all confirmed against NBIS:
 - **Decoding time follows the declared size, not the file size.** A stream
   may stop early, and the coefficients it does not deliver are zero (NBIS
   leaves them uninitialised). The whole image is still reconstructed. So a
-  file of a few hundred bytes can declare 100 megapixels and cost about 10
-  seconds and 0.8 GB (measured, x86_64, before tuning); NBIS behaves the
-  same, about 1.6 times faster. The helper's 60-second timeout and
-  one process per image contain it. The first fuzz run of the Rust decoder
-  reported this as a timeout.
+  file of a few hundred bytes can declare 100 megapixels and cost 1.3
+  seconds and 0.8 GB (measured, x86_64; 10 seconds before the tuning of
+  step 6). NBIS behaves the same, more slowly. The helper's 60-second
+  timeout and one process per image contain it. The first fuzz run of the
+  Rust decoder reported this as a timeout.
 - **Filter lengths are capped at 32, where NBIS allows 255.** This is the one
   place where the decoder is deliberately stricter than NBIS on input NBIS
-  handles correctly. Time grows with the filter length: 100 megapixels take
-  27 seconds with 32 taps and would take about 3 minutes with 255. The
-  specification's maximum is 32 (31 for odd lengths), and encoders write the
-  9 and 7 tap pair only.
+  handles correctly. Time grows with the filter length: before tuning, 100
+  megapixels took 27 seconds with 32 taps and would have taken about 3
+  minutes with 255 (2.4 seconds with 32 taps after step 6, so the cap matters
+  less now, but it also bounds the filter storage). The specification's
+  maximum is 32 (31 for odd lengths), and encoders write the 9 and 7 tap
+  pair only.
 - The BioCTS files contain 136 WSQ streams, two more than the 134 records
   labelled as WSQ: in `fail-*` files, one is labelled `JPEGB` and one is a
   Type-4 record with compression code 2.
@@ -546,7 +557,34 @@ Things the research above did not have, all confirmed against NBIS:
      NBIS: a reason to do step 6 (speed) before the long runs of step 5.
 5. Add the `wsq_diff` target and the corpus replay script; fuzz; minimise
    and commit the regression inputs.
-6. Measure speed against NBIS (0.11 s for 2.25 megapixels).
+6. ✅ (2026-09-30, done before step 5 so that the fuzzing runs faster)
+   Measure speed against NBIS (0.11 s for 2.25 megapixels).
+   - Where the time went: 94 % in `join_lets`, 4 % in Huffman decoding.
+   - **The middle of every line is computed in bulk.** Away from the ends of
+     a line the filter walk never reflects, and an output sample is a plain
+     sum of products. `Pass::straight` finds that stretch from the same
+     state the literal port keeps; the literal port still does the ends.
+     - Columns: a column only reads and writes its own places, so the order
+       between columns is free, and the stretch is done row by row across
+       all columns. That is contiguous memory, in loops the compiler can
+       vectorise across columns (each column keeps its own order of
+       additions).
+     - Rows: all lowpass sums of a line first, then the highpass sums on top,
+       one pass over the line per filter coefficient. That reorders work
+       between samples only when the highpass output is not ahead of the
+       lowpass output; otherwise the rounds run in NBIS's order.
+     - Every sample still gets the same operations in the same order, so the
+       pixels do not change: the differential test is the check, and its
+       generated streams reach all three paths.
+   - Result on the 48 sample images (x86_64, `native/nbis_ref/examples/
+     wsq_bench.rs`): **70 megapixels per second, NBIS 23**; the largest
+     image (2.25 megapixels) takes 40 ms against 114 ms. Before: 14.
+   - 100 megapixels of declared image: 1.3 s with the standard filters, 2.4 s
+     with 32 taps (10 s and 27 s before).
+   - The fuzzer runs about 200 inputs per second, as it did with NBIS (10 to
+     30 before). Five more minutes, 63,000 inputs: no crash.
+   - Not done: Huffman decoding is still bit by bit, as in NBIS (now about
+     12 % of the time).
 7. Update the docs listed above.
 
 Open question for later: support restart intervals (DRI/RSTm)? The spec

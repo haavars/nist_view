@@ -198,6 +198,35 @@ struct Transform {
     /// `hi` negated: NBIS negates the filter in place, and restores it,
     /// around every pass with an even-length lowpass filter.
     hi_negated: Vec<f32>,
+    /// The same filters split by phase, for `join_lets`.
+    lo_phases: [Phase; 2],
+    hi_phases: [Phase; 2],
+    hi_negated_phases: [Phase; 2],
+}
+
+/// Every second coefficient of a filter, from the first or from the second:
+/// the ones that one output sample is a sum over.
+#[derive(Clone, Copy)]
+struct Phase {
+    taps: [f32; MAX_FILTER_LENGTH / 2],
+    len: usize,
+}
+
+impl Phase {
+    fn both(filter: &[f32]) -> [Phase; 2] {
+        [0, 1].map(|first| {
+            let mut phase = Phase { taps: [0.0; MAX_FILTER_LENGTH / 2], len: 0 };
+            for &tap in filter.iter().skip(first).step_by(2) {
+                phase.taps[phase.len] = tap;
+                phase.len += 1;
+            }
+            phase
+        })
+    }
+
+    fn taps(&self) -> &[f32] {
+        &self.taps[..self.len]
+    }
 }
 
 impl Transform {
@@ -244,8 +273,9 @@ impl Transform {
             }
         }
 
-        let hi_negated = hi.iter().map(|&value| -value).collect();
-        Ok(Transform { lo, hi, hi_negated })
+        let hi_negated: Vec<f32> = hi.iter().map(|&value| -value).collect();
+        let (lo_phases, hi_phases, hi_negated_phases) = (Phase::both(&lo), Phase::both(&hi), Phase::both(&hi_negated));
+        Ok(Transform { lo, hi, hi_negated, lo_phases, hi_phases, hi_negated_phases })
     }
 }
 
@@ -1026,23 +1056,77 @@ fn put(buffer: &mut [f32], index: isize, value: f32) -> Result<(), Error> {
 }
 
 /// The ends of one half of a line in the source buffer, where the filter
-/// reflects, and the steps forwards and backwards along the line.
+/// reflects.
+#[derive(Clone, Copy)]
 struct Span {
     first: isize,
     last: isize,
-    forward: isize,
-    backward: isize,
+}
+
+/// What stays the same through one `join_lets` call. The names are NBIS's.
+struct Pass<'a> {
+    lo: &'a [f32],
+    hi: &'a [f32],
+    lo_phases: &'a [Phase; 2],
+    hi_phases: &'a [Phase; 2],
+    /// Odd line length, and even filter length.
+    da_ev: bool,
+    asym: bool,
+    llen: i32,
+    hlen: i32,
+    ssfac: f32,
+    ofhre: i32,
+    loc: i32,
+    hoc: i32,
+    lotap: i32,
+    hotap: i32,
+    olle: bool,
+    olre: bool,
+    ohle: bool,
+    ohre: bool,
+    new_base: isize,
+    old_base: isize,
+    pitch: isize,
+    stride: isize,
+    inv: bool,
+}
+
+/// NBIS's variables for one line, between two rounds of its main loop.
+struct Line {
+    /// Rounds of the main loop done, of `hlen`.
+    pix: i32,
+    limg: isize,
+    himg: isize,
+    lspan: Span,
+    lspx: isize,
+    lspxstr: isize,
+    lstap: i32,
+    lle2: bool,
+    hspan: Span,
+    hspx: isize,
+    hspxstr: isize,
+    hstap: i32,
+    hle2: bool,
+    osfac: f32,
+    fhre: i32,
 }
 
 /// NBIS `join_lets`: joins the low and high halves of `len1` lines of
 /// `len2` samples. Lines are `pitch` apart and their samples `stride` apart,
 /// in both buffers.
 ///
-/// A literal port. The positions are offsets into the whole buffers, as the
-/// pointers are in NBIS, and are only checked when they are read or written:
-/// NBIS reads outside the node it is joining (the filter's first sample can
-/// lie beyond a short half), and writes two samples of every line before it
-/// reads anything. Staying inside the buffers is what keeps that defined.
+/// A literal port (`Pass::start`, `round` and `finish`). The positions are
+/// offsets into the whole buffers, as the pointers are in NBIS, and are only
+/// checked when they are read or written: NBIS reads outside the node it is
+/// joining (the filter's first sample can lie beyond a short half), and
+/// writes two samples of every line before it reads anything. Staying inside
+/// the buffers is what keeps that defined.
+///
+/// The one addition is for the middle of a line, which is most of it. There
+/// the filters walk straight over the source without reflecting at an end,
+/// and every output sample is a plain sum of products. `Pass::straight`
+/// finds that stretch, and it is computed in bulk, with the same operations
+/// in the same order for every sample.
 #[allow(clippy::too_many_arguments)]
 fn join_lets(
     new: &mut [f32],
@@ -1056,12 +1140,9 @@ fn join_lets(
     dtt: &Transform,
     inv: bool,
 ) -> Result<(), Error> {
-    let lo = &dtt.lo[..];
-    let (lsz, hsz) = (lo.len() as i32, dtt.hi.len() as i32);
+    let (lsz, hsz) = (dtt.lo.len() as i32, dtt.hi.len() as i32);
     let da_ev = len2 % 2 != 0;
     let fi_ev = lsz % 2 != 0;
-    let asym = !fi_ev;
-    let hi = if fi_ev { &dtt.hi[..] } else { &dtt.hi_negated[..] };
 
     let llen = if da_ev { (len2 + 1) / 2 } else { len2 / 2 };
     let hlen = if da_ev { llen - 1 } else { llen };
@@ -1094,173 +1175,447 @@ fn join_lets(
         }
     }
 
-    // One output sample of the lowpass branch: `*limg = ...; *limg += ...`.
-    let low = |new: &mut [f32], limg: isize, tap: i32, mut lpx: isize, mut lpxstr: isize, mut lle: bool, mut lre: bool, span: &Span| {
-        let mut sum = get(old, lpx)? * *lo.get(tap as usize).ok_or(INVALID)?;
+    let pass = Pass {
+        lo: &dtt.lo,
+        hi: if fi_ev { &dtt.hi } else { &dtt.hi_negated },
+        lo_phases: &dtt.lo_phases,
+        hi_phases: if fi_ev { &dtt.hi_phases } else { &dtt.hi_negated_phases },
+        da_ev,
+        asym: !fi_ev,
+        llen,
+        hlen,
+        ssfac,
+        ofhre,
+        loc,
+        hoc,
+        lotap,
+        hotap,
+        olle,
+        olre,
+        ohle,
+        ohre,
+        new_base,
+        old_base,
+        pitch,
+        stride,
+        inv,
+    };
 
-        for i in ((tap + 2)..lsz).step_by(2) {
-            if lpx == span.first {
+    if pitch == 1 && stride > 1 {
+        // Lines are columns, next to each other and `stride` (the image
+        // width) from sample to sample. A column is read and written in its
+        // own places only, so the order between columns is free: the
+        // straight stretch is done row by row, across all of them.
+        let mut lines = Vec::with_capacity(len1.max(0) as usize);
+        for cl_rw in 0..len1 as isize {
+            let mut line = pass.start(new, cl_rw)?;
+            pass.rounds_until_straight(new, old, &mut line)?;
+            lines.push(line);
+        }
+
+        if let Some(first) = lines.first() {
+            let rounds = pass.straight(first);
+            if rounds > 0 && pass.fits(new, old, first, rounds, lines.len()) {
+                pass.straight_columns(new, old, first, rounds, lines.len());
+                lines.iter_mut().for_each(|line| pass.skip(line, rounds));
+            }
+        }
+
+        for line in &mut lines {
+            pass.finish(new, old, line)?;
+        }
+    } else {
+        let mut sums = Vec::new();
+
+        for cl_rw in 0..len1 as isize {
+            let mut line = pass.start(new, cl_rw)?;
+            pass.rounds_until_straight(new, old, &mut line)?;
+
+            let rounds = pass.straight(&line);
+            if rounds > 0 && stride == 1 && pass.fits(new, old, &line, rounds, 1) {
+                pass.straight_line(new, old, &line, rounds, &mut sums);
+                pass.skip(&mut line, rounds);
+            }
+
+            pass.finish(new, old, &mut line)?;
+        }
+    }
+
+    Ok(())
+}
+
+impl Pass<'_> {
+    /// The start of a line: everything NBIS sets before its main loop.
+    fn start(&self, new: &mut [f32], cl_rw: isize) -> Result<Line, Error> {
+        let stride = self.stride;
+        let limg = self.new_base + cl_rw * self.pitch;
+        put(new, limg, 0.0)?;
+        put(new, limg + stride, 0.0)?;
+
+        let line = self.old_base + cl_rw * self.pitch;
+        let (lopass, hipass) = if self.inv {
+            (line + stride * self.hlen as isize, line)
+        } else {
+            (line, line + stride * self.llen as isize)
+        };
+
+        Ok(Line {
+            pix: 0,
+            limg,
+            himg: limg,
+            lspan: Span { first: lopass, last: lopass + (self.llen - 1) as isize * stride },
+            lspx: lopass + self.loc as isize * stride,
+            lspxstr: -stride,
+            lstap: self.lotap,
+            lle2: self.olle,
+            hspan: Span { first: hipass, last: hipass + (self.hlen - 1) as isize * stride },
+            hspx: hipass + self.hoc as isize * stride,
+            hspxstr: -stride,
+            hstap: self.hotap,
+            hle2: self.ohle,
+            osfac: self.ssfac,
+            fhre: 0,
+        })
+    }
+
+    /// One output sample of the lowpass branch: `*limg = ...; *limg += ...`.
+    fn low(&self, new: &mut [f32], old: &[f32], line: &Line, tap: i32) -> Result<(), Error> {
+        let (pstr, nstr) = (self.stride, -self.stride);
+        let (mut lpx, mut lpxstr, mut lle, mut lre) = (line.lspx, line.lspxstr, line.lle2, self.olre);
+        let mut sum = get(old, lpx)? * *self.lo.get(tap as usize).ok_or(INVALID)?;
+
+        for i in ((tap + 2) as usize..self.lo.len()).step_by(2) {
+            if lpx == line.lspan.first {
                 if lle {
                     lpxstr = 0;
                     lle = false;
                 } else {
-                    lpxstr = span.forward;
+                    lpxstr = pstr;
                 }
             }
-            if lpx == span.last {
+            if lpx == line.lspan.last {
                 if lre {
                     lpxstr = 0;
                     lre = false;
                 } else {
-                    lpxstr = span.backward;
+                    lpxstr = nstr;
                 }
             }
             lpx += lpxstr;
-            sum += get(old, lpx)? * lo[i as usize];
+            sum += get(old, lpx)? * self.lo[i];
         }
 
-        put(new, limg, sum)
-    };
+        put(new, line.limg, sum)
+    }
 
-    // One output sample of the highpass branch: `*himg += ...`.
-    #[allow(clippy::too_many_arguments)]
-    let high = |new: &mut [f32], himg: isize, tap: i32, mut hpx: isize, mut hpxstr: isize, mut hle: bool, mut hre: bool, mut sfac: f32, fhre: &mut i32, span: &Span| {
-        if tap >= hsz {
+    /// One output sample of the highpass branch: `*himg += ...`.
+    fn high(&self, new: &mut [f32], old: &[f32], line: &mut Line, tap: i32) -> Result<(), Error> {
+        if tap as usize >= self.hi.len() {
             return Ok(());
         }
-        let mut sum = get(new, himg)?;
+        let (pstr, nstr) = (self.stride, -self.stride);
+        let (mut hpx, mut hpxstr, mut hle, mut hre) = (line.hspx, line.hspxstr, line.hle2, self.ohre);
+        let mut sfac = line.osfac;
+        let mut sum = get(new, line.himg)?;
 
-        for i in (tap..hsz).step_by(2) {
-            if hpx == span.first {
+        for i in (tap as usize..self.hi.len()).step_by(2) {
+            if hpx == line.hspan.first {
                 if hle {
                     hpxstr = 0;
                     hle = false;
                 } else {
-                    hpxstr = span.forward;
+                    hpxstr = pstr;
                     sfac = 1.0;
                 }
             }
-            if hpx == span.last {
+            if hpx == line.hspan.last {
                 if hre {
                     hpxstr = 0;
                     hre = false;
-                    if asym && da_ev {
+                    if self.asym && self.da_ev {
                         hre = true;
-                        *fhre -= 1;
-                        sfac = *fhre as f32;
+                        line.fhre -= 1;
+                        sfac = line.fhre as f32;
                         if sfac == 0.0 {
                             hre = false;
                         }
                     }
                 } else {
-                    hpxstr = span.backward;
-                    if asym {
+                    hpxstr = nstr;
+                    if self.asym {
                         sfac = -1.0;
                     }
                 }
             }
-            sum += get(old, hpx)? * hi[i as usize] * sfac;
+            sum += get(old, hpx)? * self.hi[i] * sfac;
             hpx += hpxstr;
         }
 
-        put(new, himg, sum)
-    };
+        put(new, line.himg, sum)
+    }
 
-    let (pstr, nstr) = (stride, -stride);
-    let mut fhre = 0;
+    /// One round of NBIS's main loop: a low and a high sample of input, one
+    /// or two output samples from each.
+    fn round(&self, new: &mut [f32], old: &[f32], line: &mut Line) -> Result<(), Error> {
+        let stride = self.stride;
 
-    for cl_rw in 0..len1 as isize {
-        let mut limg = new_base + cl_rw * pitch;
-        let mut himg = limg;
-        put(new, himg, 0.0)?;
-        put(new, himg + stride, 0.0)?;
-
-        let line = old_base + cl_rw * pitch;
-        let (lopass, hipass) = if inv {
-            (line + stride * hlen as isize, line)
-        } else {
-            (line, line + stride * llen as isize)
-        };
-
-        let lspan = Span { first: lopass, last: lopass + (llen - 1) as isize * stride, forward: pstr, backward: nstr };
-        let mut lspx = lopass + loc as isize * stride;
-        let mut lspxstr = nstr;
-        let mut lstap = lotap;
-        let mut lle2 = olle;
-        let lre2 = olre;
-
-        let hspan = Span { first: hipass, last: hipass + (hlen - 1) as isize * stride, forward: pstr, backward: nstr };
-        let mut hspx = hipass + hoc as isize * stride;
-        let mut hspxstr = nstr;
-        let mut hstap = hotap;
-        let mut hle2 = ohle;
-        let hre2 = ohre;
-        let mut osfac = ssfac;
-
-        for _ in 0..hlen {
-            for tap in (0..=lstap).rev() {
-                low(new, limg, tap, lspx, lspxstr, lle2, lre2, &lspan)?;
-                limg += stride;
+        for tap in (0..=line.lstap).rev() {
+            self.low(new, old, line, tap)?;
+            line.limg += stride;
+        }
+        if line.lspx == line.lspan.first {
+            if line.lle2 {
+                line.lspxstr = 0;
+                line.lle2 = false;
+            } else {
+                line.lspxstr = stride;
             }
-            if lspx == lspan.first {
-                if lle2 {
-                    lspxstr = 0;
-                    lle2 = false;
-                } else {
-                    lspxstr = pstr;
-                }
-            }
-            lspx += lspxstr;
-            lstap = 1;
+        }
+        line.lspx += line.lspxstr;
+        line.lstap = 1;
 
-            for tap in (0..=hstap).rev() {
-                fhre = ofhre;
-                high(new, himg, tap, hspx, hspxstr, hle2, hre2, osfac, &mut fhre, &hspan)?;
-                himg += stride;
+        for tap in (0..=line.hstap).rev() {
+            line.fhre = self.ofhre;
+            self.high(new, old, line, tap)?;
+            line.himg += stride;
+        }
+        if line.hspx == line.hspan.first {
+            if line.hle2 {
+                line.hspxstr = 0;
+                line.hle2 = false;
+            } else {
+                line.hspxstr = stride;
+                line.osfac = 1.0;
             }
-            if hspx == hspan.first {
-                if hle2 {
-                    hspxstr = 0;
-                    hle2 = false;
-                } else {
-                    hspxstr = pstr;
-                    osfac = 1.0;
-                }
-            }
-            hspx += hspxstr;
-            hstap = 1;
+        }
+        line.hspx += line.hspxstr;
+        line.hstap = 1;
+
+        line.pix += 1;
+        Ok(())
+    }
+
+    fn rounds_until_straight(&self, new: &mut [f32], old: &[f32], line: &mut Line) -> Result<(), Error> {
+        while line.pix < self.hlen && self.straight(line) == 0 {
+            self.round(new, old, line)?;
+        }
+        Ok(())
+    }
+
+    /// The rest of the main loop, and the samples NBIS computes after it.
+    fn finish(&self, new: &mut [f32], old: &[f32], line: &mut Line) -> Result<(), Error> {
+        while line.pix < self.hlen {
+            self.round(new, old, line)?;
         }
 
-        lstap = match (da_ev, lotap != 0) {
+        let stride = self.stride;
+        line.lstap = match (self.da_ev, self.lotap != 0) {
             (true, true) => 1,
             (true, false) => 0,
             (false, true) => 2,
             (false, false) => 1,
         };
-        for tap in (lstap..=1).rev() {
-            low(new, limg, tap, lspx, lspxstr, lle2, lre2, &lspan)?;
-            limg += stride;
+        for tap in (line.lstap..=1).rev() {
+            self.low(new, old, line, tap)?;
+            line.limg += stride;
         }
 
-        if da_ev {
-            hstap = if hotap != 0 { 1 } else { 0 };
-            if hsz == 2 {
-                hspx -= hspxstr;
-                fhre = 1;
+        if self.da_ev {
+            line.hstap = if self.hotap != 0 { 1 } else { 0 };
+            if self.hi.len() == 2 {
+                line.hspx -= line.hspxstr;
+                line.fhre = 1;
             }
         } else {
-            hstap = if hotap != 0 { 2 } else { 1 };
+            line.hstap = if self.hotap != 0 { 2 } else { 1 };
         }
-        for tap in (hstap..=1).rev() {
-            if hsz != 2 {
-                fhre = ofhre;
+        for tap in (line.hstap..=1).rev() {
+            if self.hi.len() != 2 {
+                line.fhre = self.ofhre;
             }
-            high(new, himg, tap, hspx, hspxstr, hle2, hre2, osfac, &mut fhre, &hspan)?;
-            himg += stride;
+            self.high(new, old, line, tap)?;
+            line.himg += stride;
+        }
+
+        Ok(())
+    }
+
+    /// How many rounds from here the filters walk straight: forwards, two
+    /// output samples from each branch per round, and never standing on the
+    /// last sample of a half when NBIS looks for a reflection. 0 when the
+    /// line is not there (yet), or never gets there.
+    fn straight(&self, line: &Line) -> usize {
+        let stride = self.stride;
+        let (lo_taps, hi_taps) = (self.lo_phases[0].len as isize, self.hi_phases[0].len as isize);
+
+        // Both phases of both filters have coefficients, the walks have
+        // turned at the first sample (which also sets the scale factor to
+        // 1), and they are on the samples of the line.
+        let steady = self.lo_phases[1].len > 0
+            && self.hi_phases[1].len > 0
+            && stride > 0
+            && (line.lstap, line.hstap) == (1, 1)
+            && (line.lspxstr, line.hspxstr) == (stride, stride)
+            && !line.lle2
+            && !line.hle2
+            && line.osfac == 1.0
+            && (line.lspan.last - line.lspx) % stride == 0
+            && (line.hspan.last - line.hspx) % stride == 0;
+        if !steady {
+            return 0;
+        }
+
+        // The lowpass loop looks before each step, so not at its last
+        // sample; the highpass loop looks at every sample it reads.
+        let low = (line.lspan.last - line.lspx) / stride - (lo_taps - 2);
+        let high = (line.hspan.last - line.hspx) / stride - (hi_taps - 1);
+        low.min(high).min((self.hlen - line.pix) as isize).max(0) as usize
+    }
+
+    /// Whether `rounds` straight rounds of `lines` lines stay inside the
+    /// buffers. If not, the checked walk finds the access that does not.
+    fn fits(&self, new: &[f32], old: &[f32], line: &Line, rounds: usize, lines: usize) -> bool {
+        let inside = |buffer: &[f32], start: isize, steps: usize| {
+            usize::try_from(start).is_ok_and(|start| start + steps * self.stride as usize + (lines - 1) < buffer.len())
+        };
+
+        inside(old, line.lspx, rounds - 1 + self.lo_phases[0].len - 1)
+            && inside(old, line.hspx, rounds - 1 + self.hi_phases[0].len - 1)
+            && inside(new, line.limg, 2 * rounds - 1)
+            && inside(new, line.himg, 2 * rounds - 1)
+    }
+
+    /// `rounds` straight rounds of one line of adjacent samples.
+    ///
+    /// NBIS computes two lowpass samples, then adds two highpass sums onto
+    /// samples already written, round by round. While the highpass output
+    /// is not ahead of the lowpass output, every sample it adds onto is
+    /// final by then, so all the lowpass samples can be computed first:
+    /// each phase as one pass over the line for every filter coefficient.
+    fn straight_line(&self, new: &mut [f32], old: &[f32], line: &Line, rounds: usize, sums: &mut Vec<f32>) {
+        let (limg, himg) = (line.limg as usize, line.himg as usize);
+        let (lspx, hspx) = (line.lspx as usize, line.hspx as usize);
+
+        if himg > limg {
+            return self.straight_line_in_order(new, old, line, rounds);
+        }
+        sums.clear();
+        sums.resize(rounds, 0.0);
+
+        // The odd phase gives the first output sample of a round.
+        for (offset, phase) in [1, 0].into_iter().enumerate() {
+            let taps = self.lo_phases[phase].taps();
+
+            for (sum, sample) in sums.iter_mut().zip(&old[lspx..]) {
+                *sum = sample * taps[0];
+            }
+            for (index, tap) in taps.iter().enumerate().skip(1) {
+                for (sum, sample) in sums.iter_mut().zip(&old[lspx + index..]) {
+                    *sum += sample * tap;
+                }
+            }
+            for (out, sum) in new[limg + offset..].iter_mut().step_by(2).zip(sums.iter()) {
+                *out = *sum;
+            }
+        }
+
+        for (offset, phase) in [1, 0].into_iter().enumerate() {
+            let taps = self.hi_phases[phase].taps();
+
+            for (sum, out) in sums.iter_mut().zip(new[himg + offset..].iter().step_by(2)) {
+                *sum = *out;
+            }
+            for (index, tap) in taps.iter().enumerate() {
+                for (sum, sample) in sums.iter_mut().zip(&old[hspx + index..]) {
+                    *sum += sample * tap;
+                }
+            }
+            for (out, sum) in new[himg + offset..].iter_mut().step_by(2).zip(sums.iter()) {
+                *out = *sum;
+            }
         }
     }
 
-    Ok(())
+    /// As `straight_line`, in NBIS's order of rounds.
+    fn straight_line_in_order(&self, new: &mut [f32], old: &[f32], line: &Line, rounds: usize) {
+        let (lo, hi) = (self.lo_phases, self.hi_phases);
+        let (limg, himg) = (line.limg as usize, line.himg as usize);
+        let (lspx, hspx) = (line.lspx as usize, line.hspx as usize);
+
+        let low = |window: &[f32], taps: &[f32]| {
+            let mut sum = window[0] * taps[0];
+            for (sample, tap) in window[1..].iter().zip(&taps[1..]) {
+                sum += sample * tap;
+            }
+            sum
+        };
+        let high = |mut sum: f32, window: &[f32], taps: &[f32]| {
+            for (sample, tap) in window.iter().zip(taps) {
+                sum += sample * tap;
+            }
+            sum
+        };
+
+        for round in 0..rounds {
+            let window = &old[lspx + round..];
+            new[limg + 2 * round] = low(window, lo[1].taps());
+            new[limg + 2 * round + 1] = low(window, lo[0].taps());
+
+            let window = &old[hspx + round..];
+            let out = himg + 2 * round;
+            new[out] = high(new[out], window, hi[1].taps());
+            new[out + 1] = high(new[out + 1], window, hi[0].taps());
+        }
+    }
+
+    /// `rounds` straight rounds of `lines` columns, `line` being the first:
+    /// the same sums as `straight_line` for every column, a row at a time.
+    fn straight_columns(&self, new: &mut [f32], old: &[f32], line: &Line, rounds: usize, lines: usize) {
+        let width = self.stride as usize;
+        let (limg, himg) = (line.limg as usize, line.himg as usize);
+        let (lspx, hspx) = (line.lspx as usize, line.hspx as usize);
+
+        for round in 0..rounds {
+            // The odd phase gives the first output row of a round.
+            for (row, phase) in [1, 0].into_iter().enumerate() {
+                let taps = self.lo_phases[phase].taps();
+                let out = &mut new[limg + (2 * round + row) * width..][..lines];
+                let source = |tap: usize| &old[lspx + (round + tap) * width..][..lines];
+
+                for (out, sample) in out.iter_mut().zip(source(0)) {
+                    *out = sample * taps[0];
+                }
+                for (index, tap) in taps.iter().enumerate().skip(1) {
+                    for (out, sample) in out.iter_mut().zip(source(index)) {
+                        *out += sample * tap;
+                    }
+                }
+            }
+
+            for (row, phase) in [1, 0].into_iter().enumerate() {
+                let taps = self.hi_phases[phase].taps();
+                let out = &mut new[himg + (2 * round + row) * width..][..lines];
+
+                for (index, tap) in taps.iter().enumerate() {
+                    let source = &old[hspx + (round + index) * width..][..lines];
+                    for (out, sample) in out.iter_mut().zip(source) {
+                        *out += sample * tap;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Moves a line past `rounds` straight rounds.
+    fn skip(&self, line: &mut Line, rounds: usize) {
+        let rounds = rounds as isize;
+        line.limg += 2 * rounds * self.stride;
+        line.himg += 2 * rounds * self.stride;
+        line.lspx += rounds * self.stride;
+        line.hspx += rounds * self.stride;
+        line.pix += rounds as i32;
+        line.fhre = self.ofhre;
+    }
 }
 
 #[cfg(test)]

@@ -122,12 +122,21 @@ than invent a result.
 
 **WSQ filters of more than 32 taps are refused.** NBIS reads filter lengths
 up to 255, and decoding time grows with the length: a 100-megapixel image
-would take minutes. 32 is the specification's maximum, and real files use 9
-and 7. This is the only place where the Rust decoder rejects input that NBIS
-decodes correctly.
+would take minutes (before the tuning below). 32 is the specification's
+maximum, and real files use 9 and 7. This is the only place where the Rust
+decoder rejects input that NBIS decodes correctly.
 
 **Two decoders in one: `decode` and `decode_strict`.** The public `decode`
 accepts fill bytes before a marker and a `NIST_COM` without `PPI`.
 `decode_strict` rejects them as NBIS does, which gives the differential tests
 a simple rule: if `decode_strict` succeeds, NBIS must succeed with the same
 image.
+
+**WSQ speed: bulk computation of the middle of each line, not a rewrite.**
+The literal port of `join_lets` stays and handles the ends of every line.
+For the stretch where the filters do not reflect, which is nearly all of a
+line, the same sums are computed in bulk: row by row across all columns for
+the column pass, and a whole line per filter coefficient for the row pass.
+No sample's operations change or change order, so the output stays identical
+to NBIS, which the differential test confirms. The decoder went from 14 to 70
+megapixels per second; NBIS does 23.

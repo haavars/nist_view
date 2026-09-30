@@ -179,7 +179,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ in use, differential fuzzing still to do ([wsq-port.md](wsq-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ in use and three times as fast as NBIS, differential fuzzing still to do ([wsq-port.md](wsq-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -273,7 +273,7 @@ Details, fuzzing results and open items: [security.md](security.md).
   - NBIS-produced files need the table-class quirk handled (see [formats.md](formats.md)).
 - **Security review:** the controls in place are documented and checked on the built release.
 - **Still to do** (see [security.md](security.md#open-items)):
-  - the rest of the WSQ port: the application decodes WSQ in safe Rust since 2026-09-30 (identical to NBIS on all samples); differential fuzzing, regression inputs and speed are still to do ([wsq-port.md](wsq-port.md))
+  - the rest of the WSQ port: the application decodes WSQ in safe Rust since 2026-09-30 (identical to NBIS on all samples); differential fuzzing and regression inputs are still to do ([wsq-port.md](wsq-port.md))
   - the libjpeg-turbo differential fuzz target
   - longer fuzz runs
   - minimised regression inputs
