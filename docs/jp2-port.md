@@ -216,5 +216,5 @@ merged locally).
 
 After that, the project's open items are in [security.md](security.md#open-items)
 and [plan.md](plan.md): sandbox the helper (now defence in depth), run the
-Prüm samples, CI for the five desktop targets, the smaller security items,
+Prüm samples, CI for the five desktop targets, PubSub `ready:` authentication,
 longer fuzzing of lossless JPEG, signing.

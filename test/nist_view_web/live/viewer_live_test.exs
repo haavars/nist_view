@@ -1,6 +1,7 @@
 defmodule NistViewWeb.ViewerLiveTest do
   use NistViewWeb.ConnCase, async: true
 
+  import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
 
   @phantom File.read!("test/fixtures/phantom_enrol.an2")
@@ -87,6 +88,52 @@ defmodule NistViewWeb.ViewerLiveTest do
     view |> element("#hex-field-2-999") |> render_click()
     assert has_element?(view, "#hex-target", "Field 999")
     assert has_element?(view, "#hex-lines #hex-0", "89 50 4E 47")
+  end
+
+  test "ignores malformed and out-of-range events", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    # No file open yet.
+    render_click(view, "select", %{"index" => "0"})
+    render_click(view, "hex_record", %{})
+    render_click(view, "hex_field", %{"number" => "1"})
+    render_click(view, "hex_page", %{"page" => "1"})
+    render_click(view, "tab", %{"tab" => "other"})
+    render_click(view, "no_such_event", %{})
+    assert has_element?(view, "#drop-zone")
+
+    view = open(conn, @phantom)
+
+    for index <- ["x", "", "1.5", "-1", "6", "99999999999999999999", nil],
+        do: render_click(view, "select", %{"index" => index})
+
+    render_click(view, "select", %{})
+    render_click(view, "hex_field", %{"number" => "x"})
+    render_click(view, "hex_page", %{"page" => "x"})
+    render_click(view, "view", %{"view" => "other"})
+    assert has_element?(view, "#records-2[aria-current=true]")
+
+    # A page past the end is clamped to the last page.
+    render_click(view, "hex_page", %{"page" => "99999999999999999999"})
+    view |> element("#tab-hex") |> render_click()
+    assert has_element?(view, "#hex-lines > div")
+  end
+
+  test "a crash report leaves out the file and the message", %{conn: conn} do
+    # The view is linked to the test process.
+    Process.flag(:trap_exit, true)
+    view = open(conn, @phantom)
+    ref = Process.monitor(view.pid)
+
+    log =
+      capture_log(fn ->
+        send(view.pid, {:unexpected, "SECRET-TEXT"})
+        assert_receive {:DOWN, ^ref, :process, _pid, _reason}
+      end)
+
+    assert log =~ "FunctionClauseError"
+    refute log =~ "SECRET-TEXT"
+    refute log =~ "assigns:"
   end
 
   test "lays out the tenprint card", %{conn: conn} do

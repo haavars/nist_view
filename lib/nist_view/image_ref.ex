@@ -22,5 +22,7 @@ defmodule NistView.ImageRef do
           colorspace: String.t() | nil
         }
 
+  # The image bytes must not end up in logs or crash reports.
+  @derive {Inspect, except: [:data]}
   defstruct [:compression, :format, :label, :data, :width, :height, :ppi, :bit_depth, :colorspace]
 end

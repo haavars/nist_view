@@ -136,7 +136,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 - Files and rendered images stay in memory: in-memory uploads, an ETS image store owned by the viewer, `no-store` responses. Nothing is written to disk.
 - Local access is gated by a per-launch token; the server binds to loopback only; the CSP is strict.
 - **Untrusted input.** Decided in M5, after fuzzing found a memory error in NBIS WSQ within a minute: C decoders run out of process (`nist_decode`), and no C code runs in the BEAM. Next: sandbox the helper.
-- Logs contain no field values from Type-2 and no image bytes. Redacting crash reports is still open.
+- Logs contain no field values from Type-2 and no image bytes, and crash reports leave out process state, messages and arguments.
 
 ---
 
@@ -279,8 +279,6 @@ Details, fuzzing results and open items: [security.md](security.md).
   - minimised regression inputs for lossless JPEG (WSQ has them)
   - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`
-  - redacted crash reports
-  - validation of client events
   - Developer ID signing and notarization, and Windows signing (need certificates)
 
 ## 8. Open questions

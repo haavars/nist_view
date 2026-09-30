@@ -13,6 +13,9 @@ defmodule NistView.Field do
           subfields: [[binary()]] | nil
         }
 
+  # The value can be personal data (Type-2 text) or image bytes, and must
+  # not end up in logs or crash reports.
+  @derive {Inspect, only: [:number]}
   defstruct [:number, :value, :subfields]
 
   @rs <<0x1E>>

@@ -42,6 +42,7 @@ network attackers (the viewer makes no network connections).
 | No writes to disk anywhere in the app. (`mix nist.dump --png` writes files only on explicit request; it is a development tool) | — |
 | No database (Ecto and Postgres removed), no mailer, no telemetry upload | — |
 | Logs contain request paths, not field values or image bytes; the image token parameter is filtered | Phoenix logger |
+| Crash reports leave out process state, the last message and stack-trace arguments; fields and images do not show their contents in `inspect` | `NistView.LogRedaction`, `NistView.Field`, `NistView.ImageRef` |
 
 ### Local access
 
@@ -117,12 +118,21 @@ than crash.
    release could send a fake `ready:` URL, and the shell would put the launch
    token in that URL. Fix: include a shared secret in `ready:` and check it
    in the shell.
-6. **Crash reports.** A LiveView crash report can include assigns (file
-   bytes, Type-2 text) in the log. Fix: custom `Inspect` for `NistFile`,
-   `Field` and `ImageRef` that redacts values and data.
-7. **Client event validation.** `select` and `hex_*` events parse integers
-   from the client with `String.to_integer`; bad input crashes that LiveView
-   process only. Validate and ignore instead.
+6. ~~Crash reports.~~ Done 2026-09-30. A crash logged the viewer's state
+   at debug level (the first bytes of the file: TCN, agency, date), and at
+   any level the last message (a rendered image arrives as one) and the
+   arguments in the stack trace (the socket, with the file in its assigns).
+   Now `NistView.LogRedaction`, a `Logger` translator, removes state, last
+   message (a LiveView event keeps its name) and stack-trace arguments from
+   GenServer and Task crash reports; the exception and the stack trace stay.
+   `Field` and `ImageRef` leave their contents out of `inspect`, for data
+   inside the exception itself. Left: an exception that carries a raw
+   binary or a plain map from the file (a `MatchError` on a field's value,
+   say) still shows up to the inspect limit.
+7. ~~Client event validation.~~ Done 2026-09-30. The viewer's events parse
+   their integers with `Integer.parse`, check indices against the file,
+   and ignore an event that is malformed, out of range, unknown or sent
+   with no file open.
 8. **Signing and notarization.** macOS builds are signed ad hoc; Developer ID
    signing and notarization need the certificates (CI secrets are wired in
    `.github/workflows/desktop.yml`). Windows signing likewise.

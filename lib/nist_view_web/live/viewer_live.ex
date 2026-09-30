@@ -11,7 +11,7 @@ defmodule NistViewWeb.ViewerLive do
 
   import NistViewWeb.ViewerComponents
 
-  alias NistView.{Field, FieldNames, ImageStore, Imaging, Parser, Record, Viewer}
+  alias NistView.{Field, FieldNames, ImageStore, Imaging, NistFile, Parser, Record, Viewer}
   alias NistViewWeb.MemoryUploadWriter
 
   @max_file_size 1_000_000_000
@@ -268,8 +268,17 @@ defmodule NistViewWeb.ViewerLive do
   @impl true
   def handle_event("validate", _params, socket), do: {:noreply, socket}
 
-  def handle_event("select", %{"index" => index}, socket) do
-    {:noreply, socket |> assign(view: :record) |> select(String.to_integer(index))}
+  # Event parameters come from the client and are checked, not trusted: an
+  # event that is malformed, out of range, or sent with no file open is
+  # ignored (the last clause) rather than crashing this process.
+  def handle_event("select", %{"index" => index}, %{assigns: %{file: %NistFile{}}} = socket) do
+    case parse_integer(index) do
+      {:ok, index} when index >= 0 and index < length(socket.assigns.file.records) ->
+        {:noreply, socket |> assign(view: :record) |> select(index)}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("key", %{"key" => key}, %{assigns: %{file: %{records: records}}} = socket)
@@ -293,23 +302,45 @@ defmodule NistViewWeb.ViewerLive do
     {:noreply, assign(socket, tab: String.to_existing_atom(tab))}
   end
 
-  def handle_event("hex_field", %{"number" => number}, socket) do
-    target = {:field, socket.assigns.selected, String.to_integer(number)}
-    {:noreply, socket |> set_hex(target) |> assign(tab: :hex)}
+  def handle_event("hex_field", %{"number" => number}, %{assigns: %{selected: index}} = socket)
+      when is_integer(index) do
+    case parse_integer(number) do
+      {:ok, number} -> {:noreply, socket |> set_hex({:field, index, number}) |> assign(tab: :hex)}
+      :error -> {:noreply, socket}
+    end
   end
 
-  def handle_event("hex_record", _params, socket) do
-    {:noreply, socket |> set_hex({:record, socket.assigns.selected}) |> assign(tab: :hex)}
+  def handle_event("hex_record", _params, %{assigns: %{selected: index}} = socket)
+      when is_integer(index) do
+    {:noreply, socket |> set_hex({:record, index}) |> assign(tab: :hex)}
   end
 
-  def handle_event("hex_page", %{"page" => page}, socket) do
-    {:noreply, set_hex(socket, socket.assigns.hex, String.to_integer(page))}
+  # set_hex/3 clamps the page to the ones there are.
+  def handle_event("hex_page", %{"page" => page}, %{assigns: %{hex: target}} = socket)
+      when not is_nil(target) do
+    case parse_integer(page) do
+      {:ok, page} -> {:noreply, set_hex(socket, target, page)}
+      :error -> {:noreply, socket}
+    end
   end
 
   def handle_event("close", _params, socket) do
     ImageStore.delete_owner(self())
     {:noreply, socket |> reset_file() |> assign(page_title: "Open a file")}
   end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp parse_integer(value) when is_integer(value), do: {:ok, value}
+
+  defp parse_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_integer(_value), do: :error
 
   # -- Rendering ---------------------------------------------------------------
 
