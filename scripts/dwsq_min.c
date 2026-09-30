@@ -2,7 +2,7 @@
  * Minimal NBIS WSQ decoder driver for comparing builds (docs/wsq-port.md).
  * Decodes each file given and writes the pixels to <file>.<$TAG>.raw.
  *
- *   cd native/nist_codecs
+ *   cd native/nbis_ref
  *   clang -O2 -ffp-contract=off -w -D__NBISLE__ -include c/quiet.h \
  *     -Ivendor/nbis/include vendor/nbis/src/{wsq,jpegl,fet,ioutil,util}/*.c \
  *     c/glue.c ../../scripts/dwsq_min.c -o dwsq_off

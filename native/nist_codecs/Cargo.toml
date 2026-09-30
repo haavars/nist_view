@@ -12,13 +12,13 @@ crate-type = ["cdylib", "rlib"]
 rustler = { version = "0.38", optional = true }
 png = "0.18"
 jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys"] }
+# Temporary, until wsq.rs replaces nbis.rs (docs/wsq-port.md, step 4). After
+# that nbis_ref is a development-time reference only.
+nbis_ref = { path = "../nbis_ref" }
 
 [features]
 default = ["nif"]
 # The Elixir interface. Off for the fuzz targets, which use the decoders
 # directly (see fuzz/).
 nif = ["dep:rustler"]
-
-[build-dependencies]
-cc = "1"
 

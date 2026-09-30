@@ -25,7 +25,7 @@ network attackers (the viewer makes no network connections).
 | Decoders read the image size from the header and refuse images over 100 megapixels before allocating | `native/nist_codecs/src/headers.rs`, `check_dimensions` |
 | **C decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
 | Lossless JPEG decoded by our own safe-Rust decoder instead of NBIS | `native/nist_codecs/src/jpegl.rs` |
-| NBIS WSQ: one bug found by fuzzing patched. **Four more are still open** (2026-09-30); a safe-Rust replacement is planned | `vendor/nbis/README.md`, [`wsq-port.md`](wsq-port.md) |
+| NBIS WSQ: one bug found by fuzzing patched. **Four more are still open** (2026-09-30); a safe-Rust replacement is planned | `native/nbis_ref/README.md`, [`wsq-port.md`](wsq-port.md) |
 | Fuzzing of every decoder with AddressSanitizer on both Rust and C | [`fuzzing.md`](fuzzing.md) |
 | Format detection by content, so a label cannot route data to the wrong decoder | `NistView.ImageFormat` |
 | Atoms are never created from input (`String.to_existing_atom` only for known values) | `ViewerLive` |

@@ -106,7 +106,7 @@ Codecs (all in v1): WSQ, PNG, JPEG baseline, raw greyscale and RGB, JPEG 2000 (l
 Revised in M5; details in [architecture.md](architecture.md#images).
 - **Rust library** `native/nist_codecs`: the decoders, header readers and PNG encoding. Its NIF (`NistView.Codecs`, behind the default `nif` feature) exposes only safe Rust: `encode_png/4` and `ycbcr_to_rgb/1`.
 - **Decoding runs out of process**, in the `nist_decode` helper (`native/nist_decode`, built by the `:nist_decode` Mix compiler), one process per image through `NistView.Decoder`: `decode(:wsq | :jpegl | :jp2, bytes) :: {:ok, %{width, height, channels, bit_depth, ppi, colorspace, pixels}} | {:error, reason}`. Crashes and timeouts become errors.
-- **WSQ:** vendored NBIS 5.0.0 (23 files, patched; `vendor/nbis/README.md`).
+- **WSQ:** vendored NBIS 5.0.0 (23 files, patched; `native/nbis_ref/README.md`).
   - `__NBISLE__` must be defined on little-endian targets.
   - Its globals need a mutex.
   - `fprintf` is silenced.

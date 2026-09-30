@@ -9,7 +9,7 @@ memory errors in C are caught where they happen, not only when they crash.
 
 | Target | Code under test |
 |---|---|
-| `wsq` | `nbis::decode_wsq` (NBIS C, patched) |
+| `wsq` | `nbis::decode_wsq` (NBIS C, patched, from `native/nbis_ref`) |
 | `jpegl` | `jpegl::decode` (safe Rust) |
 | `jp2` | `jp2::decode` (OpenJPEG C via `jpeg2k`, own 8-bit conversion) |
 | `headers` | `headers::{wsq, jpeg, jp2}` (Rust header readers) |
@@ -20,6 +20,15 @@ memory errors in C are caught where they happen, not only when they crash.
 rustup toolchain install nightly --profile minimal
 cargo +nightly install cargo-fuzz --locked
 brew install llvm                 # macOS: a clang with libFuzzer and ASan
+```
+
+On Linux, any clang with compiler-rt works, from the distribution or, without
+root, from conda-forge. Its LLVM version should match nightly Rust's
+(`rustc +nightly -vV`). Point the scripts at it with `LLVM_PREFIX`:
+
+```sh
+conda create -n nist-llvm -c conda-forge clang=23.1.1 compiler-rt=23.1.1 llvm-tools=23.1.1
+export LLVM_PREFIX=~/anaconda3/envs/nist-llvm
 ```
 
 ## Running

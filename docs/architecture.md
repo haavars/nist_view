@@ -51,7 +51,7 @@ launch token is required and `/?path=…` opens a local file.
 | `lib/nist_view_web/controllers/image_controller.ex` | Serves `/render/:token` |
 | `lib/mix/tasks/` | `nist.dump`, `nist.samples`, `compile.nist_decode` |
 | `native/nist_codecs/` | Rust library: decoders, header readers, PNG; NIF behind the `nif` feature |
-| `native/nist_codecs/vendor/nbis/` | Vendored, patched NBIS WSQ sources |
+| `native/nbis_ref/` | Vendored, patched NBIS WSQ sources and their Rust wrapper: the reference for the Rust WSQ decoder, and until that lands the decoder `nist_codecs` uses |
 | `native/nist_codecs/fuzz/` | cargo-fuzz targets and scripts |
 | `native/nist_decode/` | The helper executable |
 | `src-tauri/` | The desktop shell |

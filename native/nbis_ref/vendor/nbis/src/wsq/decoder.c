@@ -160,7 +160,9 @@ int wsq_decode_mem(unsigned char **odata, int *ow, int *oh, int *od, int *oppi,
       fprintf(stderr, "Tables for wavelet decomposition finished\n\n");
 
    /* Allocate working memory. */
-   qdata = (short *) malloc(num_pix * sizeof(short));
+   /* nist_view: calloc, so a stream with fewer coefficients than the image
+      needs decodes them as zero instead of uninitialised memory. */
+   qdata = (short *) calloc(num_pix, sizeof(short));
    if(qdata == (short *)NULL) {
       fprintf(stderr,"ERROR: wsq_decode_mem : malloc : qdata1\n");
       free_wsq_decoder_resources();
@@ -299,7 +301,8 @@ int wsq_decode_file(unsigned char **odata, int *ow, int *oh, int *od, int *oppi,
       fprintf(stderr, "Tables for wavelet decomposition finished\n\n");
 
    /* Allocate working memory. */
-   qdata = (short *) malloc(num_pix * sizeof(short));
+   /* nist_view: calloc, as in wsq_decode_mem. */
+   qdata = (short *) calloc(num_pix, sizeof(short));
    if(qdata == (short *)NULL) {
       free_wsq_decoder_resources();
       fprintf(stderr,"ERROR: wsq_decode_file : malloc : qdata1\n");

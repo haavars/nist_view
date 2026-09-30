@@ -1,8 +1,8 @@
 # WSQ in safe Rust — research and plan
 
-Status 2026-09-30: **research done, implementation not started.** This
-document is the hand-over: everything found so far, the design decided, and
-the steps to build it. Related: [security.md](security.md),
+Status 2026-09-30: **research done; step 1 of 7 done** (the `nbis_ref`
+reference crate, see [Steps](#steps)). This document is the hand-over:
+everything found so far, the design decided, and the steps to build it. Related: [security.md](security.md),
 [fuzzing.md](fuzzing.md), [formats.md](formats.md),
 [decisions.md](decisions.md).
 
@@ -24,6 +24,19 @@ M5 patch) still crashes on all of them:
 from `fuzz/run.sh`.) The artifacts are gitignored; on another machine,
 regenerate them with `fuzz/run.sh wsq 600` or copy the directory over.
 
+A second ten-minute run on x86_64 Linux (2026-09-30, clang 23.1, 8 forks)
+saved 27 crash inputs. They crash the `nbis_ref` build in the same way:
+
+```
+17 SEGV                  @ getc_nextbits_wsq
+ 7 double-free           @ free_wsq_decoder_resources
+ 2 heap-buffer-overflow  @ getc_transform_table
+ 1 SEGV                  @ unquantize
+```
+
+The double free is new; the global overflow in `getc_huffman_table_wsq` was
+not hit this time.
+
 WSQ runs in the `nist_decode` helper, so a hostile file only produces
 `{:error, :decoder_crashed}`. But the helper is not sandboxed yet, and WSQ is
 the format of the real Prüm traffic, so it is the most exposed decoder. As with
@@ -32,13 +45,14 @@ development-time reference.
 
 ## Root causes of the NBIS bugs
 
-All in `native/nist_codecs/vendor/nbis/src/`:
+All in `native/nbis_ref/vendor/nbis/src/`:
 
 | Crash | Cause |
 |---|---|
 | SEGV in `getc_nextbits_wsq` (`wsq/decoder.c`) | A read that spans a byte boundary recurses with `marker = NULL`. If the next byte is `0xFF` followed by a non-zero byte and exactly 1 bit is still needed, it writes `*marker` through the NULL pointer. |
 | heap overflow in `getc_transform_table` (`wsq/tableio.c`) | A filter length (`hisz`/`losz`) of 0: `a_size` is an `unsigned char`, `a_size--` wraps to 255, and the loop writes 256 coefficients into a zero-length `calloc`. |
 | global overflow in `getc_huffman_table_wsq` (`wsq/tableio.c`) | The table id byte is not checked against `MAX_DHT_TABLES` (8) before `dht_table + table_id`. The block header's table selector has the same problem (`decoder.c`, `(dht_table+hufftable_id)->tabdef`). |
+| double free in `free_wsq_decoder_resources` (`wsq/util.c`) | When a transform table is cut off inside its coefficients, the error paths of `getc_transform_table` free `lofilt` and `hifilt` without clearing the pointers, and `wsq_decode_mem` then frees them again. Found on 2026-09-30 by the Linux run below. |
 | heap overflow in `unquantize` (`wsq/util.c`) | Reads and writes follow the subband tree and the coefficient stream without bounds; related out-of-range walks exist in `join_lets` (filter longer than a subband, zero-length lines). |
 
 Latent bugs found while reading (not hit by the fuzzer yet):
@@ -126,16 +140,30 @@ distinct WSQ images (47 from BioCTS plus `test/fixtures/synthetic.wsq`):
 | `on` vs `fast` | identical on all 48 |
 | `on` vs `off` | differ on 46 of 48 images |
 | size of the difference | 285 of 39,226,464 pixels (0.0007 %), all by exactly 1 |
-| pinned hashes in `test/nist_view/biocts_sample_test.exs` | match `on` (FMA), not `off` |
+| hashes pinned at the time in `test/nist_view/biocts_sample_test.exs` | match `on` (FMA), not `off` |
 
 So the earlier claim "bit-identical to `dwsq`" holds only for an arm64 clang
 build. Both results are well within the spec's tolerance.
 
+The same 48 images on x86_64 Linux (2026-09-30, gcc 13.3 and clang 23.1):
+
+| Build | Result |
+|---|---|
+| gcc `-O2` and `-O3`, clang `-O2`, all with `-ffp-contract=off` | identical to each other on all 48 |
+| clang `-mfma -ffp-contract=on` | differs from `off` on the same 46 images and 285 pixels, and reproduces the arm64 hashes that were pinned |
+| gcc `-mfma -ffp-contract=fast` | differs from `off` on 38 images (81 pixels, all by 1), and from clang's fused output |
+
+So without contraction the output does not depend on the compiler or the
+optimisation level, and with contraction it depends on which expressions a
+compiler chooses to fuse. SHA-256 of the 48 `off` outputs concatenated in
+file name order: `7c0ecd2269db2ca8df743343b2a45ff7896283c26d5f86be170779bd07d95f35`
+(not yet compared with an arm64 `off` build).
+
 **Decision:** the Rust decoder uses plain IEEE `f32`/`f64` operations, no
 `mul_add`. It then gives the same output on every platform, and its reference
 is NBIS built with `-ffp-contract=off` (the arithmetic as the C source
-states it). The pinned hashes change for that reason (they will match
-`-ffp-contract=off`). Timing reference: NBIS decodes the largest BioCTS WSQ
+states it). The pinned hashes changed for that reason: `nbis_ref` is built
+that way, and they now match it on every platform. Timing reference: NBIS decodes the largest BioCTS WSQ
 image (2.25 megapixels) in 0.11 s.
 
 Reproduce:
@@ -144,7 +172,7 @@ Reproduce:
 # Extract the WSQ images (needs `mix nist.samples` for the BioCTS set).
 mix run scripts/extract_wsq.exs /tmp/wsq_ref
 
-cd native/nist_codecs
+cd native/nbis_ref
 for mode in on off; do
   clang -O2 -ffp-contract=$mode -w -D__NBISLE__ -include c/quiet.h \
     -Ivendor/nbis/include vendor/nbis/src/{wsq,jpegl,fet,ioutil,util}/*.c \
@@ -339,7 +367,8 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
       depend on uninitialised memory
   - It exposes `decode_wsq(&[u8]) -> Option<(w, h, ppi, Vec<u8>)>` (unsafe
     FFI inside, mutex for the globals).
-  - Never a dependency of `nist_codecs` or `nist_decode`.
+  - Never a dependency of `nist_codecs` or `nist_decode` (from step 4 on;
+    until then `nist_codecs::nbis` calls it).
 - **Differential test** `native/nbis_ref/tests/compare.rs`: for every WSQ
   image in `test/fixtures` and `test/samples` (skipped when the samples are
   missing), Rust and NBIS pixels and PPI must be identical. Include the images
@@ -384,13 +413,19 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
 
 ## Steps
 
-1. Create `native/nbis_ref` by moving `vendor/nbis`, `c/` and `build.rs`
-   from `nist_codecs`; add the `-ffp-contract=off` flag and the `calloc`
-   patches. Check that it reproduces the `off` hashes on the 48 images.
+1. ✅ (2026-09-30) Create `native/nbis_ref` by moving `vendor/nbis`, `c/` and
+   `build.rs` from `nist_codecs`; add the `-ffp-contract=off` flag and the
+   `calloc` patches. Check that it reproduces the `off` hashes on the 48
+   images.
+   - Done: 48 of 48 identical to unpatched NBIS built with
+     `-ffp-contract=off`, through `nist_decode`.
+   - Until step 4, `nist_codecs::nbis` calls `nbis_ref`, so `nist_codecs`
+     depends on it for now. The application therefore already decodes without
+     FMA, and the Elixir hashes were re-pinned here instead of in step 4.
 2. Write `wsq.rs` by following the behaviour list above, section by section.
 3. Write the differential test and get it to 48/48 identical, then unit tests.
-4. Switch `nist_decode` and the fuzz target; delete `nbis.rs`; re-pin the
-   Elixir hashes; `mix precommit`.
+4. Switch `nist_decode` and the fuzz target; delete `nbis.rs` and the
+   `nbis_ref` dependency of `nist_codecs`; `mix precommit`.
 5. Add the `wsq_diff` target and the corpus replay script; fuzz; minimise
    and commit the regression inputs.
 6. Measure speed against NBIS (0.11 s for 2.25 megapixels).

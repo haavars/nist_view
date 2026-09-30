@@ -98,3 +98,11 @@ memory errors. It is more lenient only where the spec allows it (fill bytes
 before markers) or where NBIS fails for no good reason (a `NIST_COM` without
 `PPI`).
 
+**NBIS moved to `native/nbis_ref`, built without FMA.** The vendored sources,
+their glue and the FFI wrapper are now a crate of their own, compiled with
+`-ffp-contract=off` and with two `calloc` patches so its output never depends
+on uninitialised memory. gcc and clang on x86_64 give identical pixels on all
+48 sample images that way, and clang with FMA on x86_64 reproduces the arm64
+output, so the difference is contraction and nothing else. `nist_codecs`
+depends on `nbis_ref` until the Rust decoder replaces it; the WSQ hashes in
+the sample tests were re-pinned to the no-FMA output.
