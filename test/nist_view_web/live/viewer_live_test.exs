@@ -90,6 +90,26 @@ defmodule NistViewWeb.ViewerLiveTest do
     assert has_element?(view, "#hex-lines #hex-0", "89 50 4E 47")
   end
 
+  test "shows the file's facts, a status bar and resizable panes", %{conn: conn} do
+    view = open(conn, @phantom)
+
+    assert has_element?(view, "#file-facts", "ENROL")
+    assert has_element?(view, "#status-bar", "6 records")
+    assert has_element?(view, "#split-sidebar[role=separator]")
+    # Record 2 has an image, so its fields panel can be resized too.
+    assert has_element?(view, "#split-fields[role=separator]")
+    assert has_element?(view, "#shortcuts[role=dialog], #shortcuts [role=dialog]")
+  end
+
+  test "shows repeated subfields as a table", %{conn: conn} do
+    view = open(conn, @phantom)
+    view |> element("#records-0") |> render_click()
+
+    # 1.003 CNT has one subfield per record.
+    assert has_element?(view, "#fields-0-3 table tr:nth-child(6)")
+    refute has_element?(view, "#fields-0-4 table")
+  end
+
   test "ignores malformed and out-of-range events", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
 

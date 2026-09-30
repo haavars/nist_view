@@ -19,29 +19,36 @@ defmodule NistViewWeb.ViewerComponents do
   def top_bar(assigns) do
     ~H"""
     <header class="flex h-14 shrink-0 items-center gap-4 border-b border-white/[0.06] bg-zinc-925 px-4">
-      <div class="flex items-center gap-2.5">
-        <div class="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-sky-400 to-indigo-500 shadow-lg shadow-sky-500/20">
-          <.icon name="hero-finger-print" class="size-4.5 text-white" />
+      <div class="flex shrink-0 items-center gap-2">
+        <div class="grid size-7 place-items-center rounded-md bg-sky-500/15 ring-1 ring-sky-400/25">
+          <.icon name="hero-finger-print" class="size-4.5 text-sky-300" />
         </div>
         <span class="text-sm font-semibold tracking-tight text-zinc-100">NIST Viewer</span>
       </div>
 
       <%= if @file do %>
-        <div class="h-5 w-px bg-white/10" />
-        <div class="flex min-w-0 items-center gap-3">
-          <span id="file-name" class="truncate text-sm font-medium text-zinc-200" title={@name}>
+        <div class="h-7 w-px shrink-0 bg-white/[0.08]" />
+        <div class="min-w-0 flex-1">
+          <p
+            id="file-name"
+            class="truncate text-[13px] leading-5 font-medium text-zinc-100"
+            title={@name}
+          >
             {@name}
-          </span>
-          <div class="hidden items-center gap-1.5 lg:flex">
-            <.chip :if={@summary.tot} label="TOT" value={@summary.tot} />
-            <.chip :if={@summary.version} label="VER" value={@summary.version} />
-            <.chip :if={@summary.date} label="DAT" value={@summary.date} />
-            <.chip :if={@summary.tcn} label="TCN" value={@summary.tcn} />
-            <.chip :if={@summary.domain} label="DOM" value={@summary.domain} />
-          </div>
+          </p>
+          <p
+            id="file-facts"
+            class="truncate text-[11px] leading-4 text-zinc-500"
+            title={facts_title(@summary)}
+          >
+            <%= for {{label, value}, i} <- Enum.with_index(facts(@summary)) do %>
+              <span :if={i > 0} class="px-1 text-zinc-700">·</span>
+              <span>{label}</span> <span class="font-mono text-zinc-300">{value}</span>
+            <% end %>
+          </p>
         </div>
 
-        <div class="ml-auto flex items-center gap-2">
+        <div class="flex shrink-0 items-center gap-2">
           <div
             :if={@tenprint != %{}}
             class="flex rounded-lg bg-white/[0.04] p-0.5 ring-1 ring-white/[0.06]"
@@ -58,6 +65,7 @@ defmodule NistViewWeb.ViewerComponents do
             phx-click="close"
             class="grid size-8 place-items-center rounded-lg text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-100"
             title="Close file"
+            aria-label="Close file"
           >
             <.icon name="hero-x-mark" class="size-4.5" />
           </button>
@@ -67,17 +75,20 @@ defmodule NistViewWeb.ViewerComponents do
     """
   end
 
-  attr :label, :string, required: true
-  attr :value, :string, required: true
-
-  defp chip(assigns) do
-    ~H"""
-    <span class="inline-flex max-w-56 items-center gap-1.5 rounded-md bg-white/[0.04] px-2 py-0.5 text-xs ring-1 ring-white/[0.06]">
-      <span class="font-medium text-zinc-500">{@label}</span>
-      <span class="truncate font-mono text-zinc-300">{@value}</span>
-    </span>
-    """
+  # The Type-1 facts shown under the file name, in reading order.
+  defp facts(summary) do
+    [
+      {"TOT", summary.tot},
+      {"VER", summary.version},
+      {"DAT", summary.date},
+      {"TCN", summary.tcn},
+      {"DOM", summary.domain}
+    ]
+    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
   end
+
+  defp facts_title(summary),
+    do: Enum.map_join(facts(summary), "\n", fn {label, value} -> "#{label}  #{value}" end)
 
   attr :id, :string, required: true
   attr :active, :boolean, required: true
@@ -115,7 +126,7 @@ defmodule NistViewWeb.ViewerComponents do
         "inline-flex cursor-pointer items-center gap-2 rounded-lg font-medium transition",
         if(@primary,
           do:
-            "bg-sky-500 px-4 py-2 text-sm text-white shadow-lg shadow-sky-500/25 hover:bg-sky-400 active:scale-[0.98]",
+            "bg-sky-500 px-4 py-2 text-sm text-white shadow-sm ring-1 ring-sky-300/30 ring-inset hover:bg-sky-400 active:scale-[0.98]",
           else:
             "bg-white/[0.06] px-3 py-1.5 text-xs text-zinc-200 ring-1 ring-white/[0.08] hover:bg-white/10"
         )
@@ -137,10 +148,10 @@ defmodule NistViewWeb.ViewerComponents do
     <div class="grid flex-1 place-items-center p-8">
       <div
         id="drop-zone"
-        class="group relative w-full max-w-xl rounded-2xl border border-dashed border-white/10 bg-gradient-to-b from-white/[0.03] to-transparent p-12 text-center transition phx-drop-target-active:border-sky-400/60"
+        class="group relative w-full max-w-xl rounded-2xl border border-dashed border-white/10 bg-zinc-925/60 p-12 text-center transition phx-drop-target-active:border-sky-400/70 phx-drop-target-active:bg-sky-500/[0.04]"
       >
-        <div class="mx-auto mb-6 grid size-16 place-items-center rounded-2xl bg-sky-500/10 ring-1 ring-sky-400/20">
-          <.icon name="hero-finger-print" class="size-8 text-sky-400" />
+        <div class="mx-auto mb-6 grid size-14 place-items-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08] transition phx-drop-target-active:bg-sky-500/10 phx-drop-target-active:ring-sky-400/30">
+          <.icon name="hero-document-arrow-up" class="size-7 text-zinc-400" />
         </div>
         <h1 class="text-xl font-semibold tracking-tight text-zinc-100">
           Open an ANSI/NIST-ITL file
@@ -176,10 +187,15 @@ defmodule NistViewWeb.ViewerComponents do
           {upload_error(err)}
         </p>
 
-        <p class="mt-10 flex items-center justify-center gap-1.5 text-xs text-zinc-500">
-          <.icon name="hero-lock-closed" class="size-3.5" />
-          The file stays in memory on this computer. Nothing is written to disk.
-        </p>
+        <div class="mt-10 border-t border-white/[0.06] pt-5">
+          <p class="flex items-center justify-center gap-1.5 text-xs text-zinc-500">
+            <.icon name="hero-lock-closed" class="size-3.5" />
+            The file stays in memory on this computer. Nothing is written to disk.
+          </p>
+          <p class="mt-2 text-[11px] text-zinc-600">
+            Traditional encoding · WSQ, JPEG, JPEG 2000, lossless JPEG and PNG images
+          </p>
+        </div>
       </div>
     </div>
     """
@@ -189,6 +205,161 @@ defmodule NistViewWeb.ViewerComponents do
   defp upload_error(:too_many_files), do: "Open one file at a time."
   defp upload_error(other), do: "Upload failed: #{inspect(other)}"
 
+  # -- Status bar ----------------------------------------------------------------
+
+  attr :file, NistFile, required: true
+  attr :error, :any
+
+  def status_bar(assigns) do
+    assigns =
+      assign(assigns,
+        images: Enum.count(assigns.file.records, & &1.image),
+        warnings: length(assigns.file.warnings)
+      )
+
+    ~H"""
+    <footer
+      id="status-bar"
+      class="flex h-7 shrink-0 items-center gap-4 border-t border-white/[0.06] bg-zinc-925 px-4 text-[11px] text-zinc-500"
+    >
+      <%= if @error do %>
+        <span class="flex items-center gap-1.5 text-rose-300">
+          <.icon name="hero-exclamation-triangle" class="size-3.5" />
+          Parsing stopped at byte {elem(@error, 0)}
+        </span>
+      <% else %>
+        <span class="flex items-center gap-1.5">
+          <span class="size-1.5 rounded-full bg-emerald-400" /> Parsed
+        </span>
+      <% end %>
+      <span>{format_bytes(@file.size)}</span>
+      <span>{plural(length(@file.records), "record")}</span>
+      <span>{plural(@images, "image")}</span>
+      <span :if={@warnings > 0} class="text-amber-300/90">{plural(@warnings, "warning")}</span>
+
+      <span class="ml-auto flex items-center gap-1.5" title="Nothing from the file is written to disk">
+        <.icon name="hero-lock-closed" class="size-3.5" /> In memory only
+      </span>
+      <button
+        id="show-shortcuts"
+        type="button"
+        phx-click={show_shortcuts()}
+        class="flex items-center gap-1.5 rounded px-1.5 py-0.5 transition hover:bg-white/[0.06] hover:text-zinc-200"
+      >
+        <kbd class="font-sans">?</kbd> Shortcuts
+      </button>
+    </footer>
+    """
+  end
+
+  defp plural(1, noun), do: "1 #{noun}"
+  defp plural(n, noun), do: "#{n} #{noun}s"
+
+  # -- Keyboard shortcuts ------------------------------------------------------------
+
+  @shortcuts [
+    {"Records",
+     [{["↑", "↓"], "Previous or next record"}, {["J", "K"], "Next or previous record"}]},
+    {"Image",
+     [
+       {["F"], "Fit to window"},
+       {["1"], "Actual pixels"},
+       {["2"], "Zoom to 2×"},
+       {["+", "−"], "Zoom in or out"},
+       {["I"], "Invert"},
+       {["R"], "Reset display adjustments"},
+       {["M"], "Show or hide minutiae"}
+     ]},
+    {"General", [{["?"], "Show these shortcuts"}, {["Esc"], "Close this panel"}]}
+  ]
+
+  def show_shortcuts(js \\ %JS{}) do
+    js
+    |> JS.show(
+      to: "#shortcuts",
+      display: "grid",
+      transition: {"ease-out duration-150", "opacity-0", "opacity-100"}
+    )
+    |> JS.focus(to: "#shortcuts-close")
+  end
+
+  def hide_shortcuts(js \\ %JS{}) do
+    JS.hide(js,
+      to: "#shortcuts",
+      transition: {"ease-in duration-100", "opacity-100", "opacity-0"}
+    )
+  end
+
+  def shortcuts(assigns) do
+    assigns = assign(assigns, groups: @shortcuts)
+
+    ~H"""
+    <div
+      id="shortcuts"
+      phx-hook=".Shortcuts"
+      data-show={show_shortcuts()}
+      class="fixed inset-0 z-50 hidden place-items-center bg-black/60 p-6 backdrop-blur-sm"
+      phx-window-keydown={hide_shortcuts()}
+      phx-key="Escape"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcuts-title"
+        phx-click-away={hide_shortcuts()}
+        class="w-full max-w-md rounded-2xl bg-zinc-900 p-5 shadow-2xl ring-1 shadow-black/60 ring-white/10"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <h2 id="shortcuts-title" class="text-sm font-semibold text-zinc-100">Keyboard shortcuts</h2>
+          <button
+            id="shortcuts-close"
+            type="button"
+            phx-click={hide_shortcuts()}
+            aria-label="Close"
+            class="grid size-7 place-items-center rounded-md text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-100"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
+        <div class="space-y-4">
+          <section :for={{group, keys} <- @groups}>
+            <h3 class="mb-1.5 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+              {group}
+            </h3>
+            <dl class="divide-y divide-white/[0.04]">
+              <div :for={{combo, what} <- keys} class="flex items-center justify-between py-1.5">
+                <dt class="text-xs text-zinc-300">{what}</dt>
+                <dd class="flex gap-1">
+                  <kbd
+                    :for={key <- combo}
+                    class="min-w-6 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-center font-sans text-[11px] text-zinc-200 ring-1 ring-white/10"
+                  >
+                    {key}
+                  </kbd>
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      </div>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".Shortcuts">
+        export default {
+          mounted() {
+            this.onKey = e => {
+              if (e.key !== "?" || e.metaKey || e.ctrlKey || e.altKey) return
+              if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
+              e.preventDefault()
+              this.liveSocket.execJS(this.el, this.el.dataset.show)
+            }
+            window.addEventListener("keydown", this.onKey)
+          },
+          destroyed() { window.removeEventListener("keydown", this.onKey) },
+        }
+      </script>
+    </div>
+    """
+  end
+
   # -- Sidebar -------------------------------------------------------------------
 
   attr :streams, :any, required: true
@@ -197,7 +368,7 @@ defmodule NistViewWeb.ViewerComponents do
 
   def sidebar(assigns) do
     ~H"""
-    <aside class="flex w-80 shrink-0 flex-col border-r border-white/[0.06] bg-zinc-925">
+    <aside id="sidebar" class="flex w-(--sidebar-w) shrink-0 flex-col bg-zinc-925">
       <div class="flex items-center justify-between px-4 pt-4 pb-2">
         <h2 class="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">Records</h2>
         <span class="text-[11px] tabular-nums text-zinc-500">{length(@file.records)}</span>
@@ -299,18 +470,38 @@ defmodule NistViewWeb.ViewerComponents do
     <div :if={@record} class="flex min-h-0 flex-1 flex-col">
       <.image_viewer :if={@record.image} record={@record} render={@render} minutiae={@minutiae} />
 
-      <section class={[
-        "flex min-h-0 flex-col border-t border-white/[0.06] bg-zinc-925",
-        if(@record.image, do: "h-[38%]", else: "flex-1")
-      ]}>
+      <.splitter
+        :if={@record.image}
+        id="split-fields"
+        orientation="horizontal"
+        panel="#fields-section"
+        side="below"
+        var="--fields-h"
+        min={120}
+        keep={200}
+        label="Resize the fields panel"
+      />
+
+      <section
+        id="fields-section"
+        class={[
+          "flex min-h-0 flex-col bg-zinc-925",
+          if(@record.image, do: "h-(--fields-h) shrink-0", else: "flex-1")
+        ]}
+      >
         <div class="flex shrink-0 items-center gap-1 border-b border-white/[0.06] px-3">
           <.tab id="tab-fields" active={@tab == :fields} value="fields">
             Fields <span class="ml-1 text-zinc-500">{length(@record.fields)}</span>
           </.tab>
           <.tab id="tab-hex" active={@tab == :hex} value="hex">Hex</.tab>
-          <div class="ml-auto flex items-center gap-3 text-[11px] text-zinc-500">
-            <span>Type-{@record.type} · {@record.encoding}</span>
-            <span class="font-mono">@{@record.offset} · {@record.length} bytes</span>
+          <div class="ml-auto flex items-center gap-2 text-[11px] text-zinc-500">
+            <span>Type-{@record.type}, {@record.encoding}</span>
+            <span class="text-zinc-700">·</span>
+            <span title="Offset in the file">
+              at <span class="font-mono text-zinc-400">{@record.offset}</span>
+            </span>
+            <span class="text-zinc-700">·</span>
+            <span class="font-mono text-zinc-400">{format_bytes(@record.length)}</span>
           </div>
         </div>
 
@@ -358,7 +549,7 @@ defmodule NistViewWeb.ViewerComponents do
       <thead class="sticky top-0 z-10 bg-zinc-925/95 backdrop-blur">
         <tr class="text-[11px] tracking-wider text-zinc-500 uppercase">
           <th class="w-24 px-4 py-2 font-semibold">Field</th>
-          <th class="w-20 py-2 font-semibold">Name</th>
+          <th class="w-24 py-2 font-semibold">Name</th>
           <th class="py-2 pr-4 font-semibold">Value</th>
         </tr>
       </thead>
@@ -372,7 +563,7 @@ defmodule NistViewWeb.ViewerComponents do
           <td class="py-1.5 font-medium text-zinc-300">{field.name}</td>
           <td class="py-1.5 pr-4 font-mono text-zinc-200">
             <%= if field.binary? do %>
-              <span class="text-zinc-500">{field.size} bytes of binary data</span>
+              <span class="text-zinc-500">Binary data, {format_bytes(field.size)}</span>
               <button
                 id={"hex-field-#{field.id}"}
                 type="button"
@@ -383,14 +574,32 @@ defmodule NistViewWeb.ViewerComponents do
                 Hex
               </button>
             <% else %>
-              <div class="max-h-40 overflow-y-auto">
+              <%= if length(field.subfields) > 1 do %>
+                <%!-- Repeated subfields: one row each, items in aligned columns --%>
+                <div class="max-h-60 overflow-auto">
+                  <table class="border-separate border-spacing-0">
+                    <tr :for={{items, row} <- Enum.with_index(field.subfields, 1)}>
+                      <td class="pr-3 text-right text-zinc-600 tabular-nums select-none">{row}</td>
+                      <td
+                        :for={item <- items}
+                        class={[
+                          "border-l border-white/[0.06] px-2 whitespace-nowrap",
+                          item == "" && "text-zinc-600"
+                        ]}
+                      >
+                        {printable(item)}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+              <% else %>
                 <div :for={items <- field.subfields} class="flex flex-wrap gap-x-1.5 break-all">
                   <%= for {item, i} <- Enum.with_index(items) do %>
                     <span :if={i > 0} class="text-zinc-600">│</span>
                     <span class={item == "" && "text-zinc-600"}>{printable(item)}</span>
                   <% end %>
                 </div>
-              </div>
+              <% end %>
             <% end %>
           </td>
         </tr>
@@ -472,6 +681,120 @@ defmodule NistViewWeb.ViewerComponents do
 
   defp offset_label(offset), do: offset |> Integer.to_string(16) |> String.pad_leading(8, "0")
 
+  @doc "A byte count for people: `812 bytes`, `14.2 KB`, `3.1 MB`."
+  def format_bytes(n) when n < 1000, do: "#{n} bytes"
+  def format_bytes(n) when n < 1_000_000, do: "#{Float.round(n / 1000, 1)} KB"
+  def format_bytes(n), do: "#{Float.round(n / 1_000_000, 1)} MB"
+
+  # -- Splitter ----------------------------------------------------------------------
+
+  @doc """
+  A handle that resizes a panel by setting a CSS variable on the document
+  element, which the panel's size is written in. Drag it, use the arrow keys
+  when it has focus, or double-click it to go back to the default size.
+
+  The size lasts as long as the window, across files. It is not stored:
+  browser storage is written to disk, and the app writes nothing there.
+  """
+  attr :id, :string, required: true
+  attr :orientation, :string, required: true, values: ["vertical", "horizontal"]
+  attr :panel, :string, required: true, doc: "selector of the panel being sized"
+  attr :side, :string, required: true, values: ["left", "below"]
+  attr :var, :string, required: true
+  attr :min, :integer, required: true
+  attr :keep, :integer, required: true, doc: "space to leave for the other side"
+  attr :label, :string, required: true
+
+  def splitter(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      role="separator"
+      tabindex="0"
+      aria-orientation={@orientation}
+      aria-label={@label}
+      title={@label}
+      phx-hook=".Splitter"
+      data-panel={@panel}
+      data-side={@side}
+      data-var={@var}
+      data-min={@min}
+      data-keep={@keep}
+      class={[
+        "group relative z-20 shrink-0 bg-white/[0.06] outline-none",
+        if(@orientation == "vertical",
+          do: "w-px cursor-col-resize",
+          else: "h-px cursor-row-resize"
+        )
+      ]}
+    >
+      <%!-- A wider, invisible grip; the line lights up on hover and focus. --%>
+      <span class={[
+        "absolute transition-colors group-hover:bg-sky-400/50 group-focus-visible:bg-sky-400/70 group-active:bg-sky-400/70",
+        if(@orientation == "vertical",
+          do: "inset-y-0 -left-[2px] w-[5px]",
+          else: "inset-x-0 -top-[2px] h-[5px]"
+        )
+      ]} />
+    </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".Splitter">
+      export default {
+        mounted() {
+          this.scope = document.documentElement
+          const {panel, side, var: name, min, keep} = this.el.dataset
+          this.opts = {panel, vertical: side === "left", name, min: +min, keep: +keep}
+
+          this.el.addEventListener("pointerdown", e => this.start(e))
+          this.el.addEventListener("dblclick", () => this.reset())
+          this.el.addEventListener("keydown", e => this.key(e))
+        },
+
+        panel() { return document.querySelector(this.opts.panel) },
+
+        size() {
+          const rect = this.panel().getBoundingClientRect()
+          return this.opts.vertical ? rect.width : rect.height
+        },
+
+        set(px) {
+          const parent = this.panel().parentElement.getBoundingClientRect()
+          const room = (this.opts.vertical ? parent.width : parent.height) - this.opts.keep
+          const value = `${Math.round(Math.max(this.opts.min, Math.min(px, room)))}px`
+          this.scope.style.setProperty(this.opts.name, value)
+        },
+
+        start(e) {
+          if (e.button !== 0) return
+          e.preventDefault()
+          const rect = this.panel().getBoundingClientRect()
+          const move = ev => this.set(this.opts.vertical ? ev.clientX - rect.left : rect.bottom - ev.clientY)
+          const stop = () => {
+            window.removeEventListener("pointermove", move)
+            document.body.classList.remove("select-none", this.opts.vertical ? "cursor-col-resize" : "cursor-row-resize")
+          }
+          document.body.classList.add("select-none", this.opts.vertical ? "cursor-col-resize" : "cursor-row-resize")
+          window.addEventListener("pointermove", move)
+          window.addEventListener("pointerup", stop, {once: true})
+        },
+
+        key(e) {
+          const grow = this.opts.vertical ? "ArrowRight" : "ArrowUp"
+          const shrink = this.opts.vertical ? "ArrowLeft" : "ArrowDown"
+          if (e.key !== grow && e.key !== shrink) return
+          e.preventDefault()
+          e.stopPropagation()
+          const step = e.shiftKey ? 64 : 16
+          this.set(this.size() + (e.key === grow ? step : -step))
+        },
+
+        reset() {
+          this.scope.style.removeProperty(this.opts.name)
+        },
+      }
+    </script>
+    """
+  end
+
   # -- Image viewer ----------------------------------------------------------------
 
   attr :record, Record, required: true
@@ -490,12 +813,76 @@ defmodule NistViewWeb.ViewerComponents do
       id="viewer"
       phx-hook=".ImageViewer"
       data-ppi={@image.ppi}
-      class="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_center,_#18181b_0%,_#09090b_100%)]"
+      class="flex min-h-0 flex-1 flex-col"
     >
+      <%!-- Title and tools, above the image rather than over it --%>
+      <div class="relative z-10 flex h-10 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-zinc-925 pr-2 pl-4">
+        <p id="viewer-title" class="min-w-0 truncate text-xs text-zinc-400">
+          <span class="font-medium text-zinc-100">{Viewer.title(@record)}</span>
+          <span class="px-1 text-zinc-700">·</span>{Viewer.image_summary(@record)}
+        </p>
+
+        <%!-- State lives in the hook --%>
+        <div
+          id="viewer-toolbar"
+          phx-update="ignore"
+          class="ml-auto flex shrink-0 items-center gap-0.5"
+        >
+          <.tool action="zoom-out" title="Zoom out (−)" icon="hero-minus" />
+          <span
+            data-zoom-label
+            class="w-11 text-center font-mono text-[11px] tabular-nums text-zinc-300"
+          >
+            100%
+          </span>
+          <.tool action="zoom-in" title="Zoom in (+)" icon="hero-plus" />
+          <div class="mx-1.5 h-4 w-px bg-white/[0.08]" />
+          <.tool action="fit" title="Fit (F)" label="Fit" />
+          <.tool action="zoom-1" title="Actual pixels (1)" label="1:1" />
+          <.tool action="zoom-2" title="2× (2)" label="2:1" />
+          <div class="mx-1.5 h-4 w-px bg-white/[0.08]" />
+          <.tool action="invert" title="Invert (I)" label="Invert" toggle />
+          <div class="relative">
+            <.tool
+              action="adjust"
+              title="Contrast, brightness and gamma"
+              icon="hero-adjustments-horizontal"
+            />
+            <div
+              data-adjust-panel
+              class="absolute top-full right-0 mt-2 hidden w-60 space-y-3 rounded-xl bg-zinc-900 p-3.5 shadow-2xl ring-1 shadow-black/60 ring-white/10"
+            >
+              <p class="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                Adjust display
+              </p>
+              <.slider name="contrast" label="Contrast" min="0.2" max="3" value="1" />
+              <.slider name="brightness" label="Brightness" min="0.2" max="3" value="1" />
+              <.slider name="gamma" label="Gamma" min="0.2" max="3" value="1" />
+              <button
+                data-action="reset"
+                type="button"
+                class="w-full rounded-md py-1.5 text-[11px] text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                Reset (R)
+              </button>
+            </div>
+          </div>
+          <svg width="0" height="0" class="absolute">
+            <filter id="viewer-gamma" color-interpolation-filters="sRGB">
+              <feComponentTransfer>
+                <feFuncR type="gamma" amplitude="1" exponent="1" offset="0" />
+                <feFuncG type="gamma" amplitude="1" exponent="1" offset="0" />
+                <feFuncB type="gamma" amplitude="1" exponent="1" offset="0" />
+              </feComponentTransfer>
+            </filter>
+          </svg>
+        </div>
+      </div>
+
       <div
         id="viewer-viewport"
         data-viewport
-        class="absolute inset-0 cursor-grab touch-none select-none active:cursor-grabbing"
+        class="viewer-canvas relative min-h-0 flex-1 cursor-grab touch-none overflow-hidden select-none active:cursor-grabbing"
       >
         <%= case @render do %>
           <% %{status: :ok, url: url} -> %>
@@ -503,7 +890,7 @@ defmodule NistViewWeb.ViewerComponents do
               id="viewer-stage"
               data-stage
               phx-mounted={JS.ignore_attributes(["style"])}
-              class="absolute top-0 left-0 origin-top-left"
+              class="absolute top-0 left-0 origin-top-left shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_12px_40px_rgba(0,0,0,0.6)]"
             >
               <div
                 id="viewer-filter"
@@ -530,8 +917,10 @@ defmodule NistViewWeb.ViewerComponents do
           <% %{status: :error, error: error} -> %>
             <div id="viewer-error" class="grid h-full place-items-center">
               <div class="max-w-sm text-center">
-                <.icon name="hero-photo" class="mx-auto size-10 text-zinc-700" />
-                <p class="mt-3 text-sm font-medium text-zinc-300">This image can't be shown</p>
+                <div class="mx-auto grid size-12 place-items-center rounded-xl bg-rose-500/10 ring-1 ring-rose-400/20">
+                  <.icon name="hero-photo" class="size-6 text-rose-300/80" />
+                </div>
+                <p class="mt-3 text-sm font-medium text-zinc-200">This image can't be shown</p>
                 <p class="mt-1 text-xs text-zinc-500">{error}</p>
               </div>
             </div>
@@ -544,108 +933,55 @@ defmodule NistViewWeb.ViewerComponents do
         <% end %>
       </div>
 
-      <%!-- Image facts --%>
-      <div class="pointer-events-none absolute top-3 left-3 flex flex-col gap-1">
-        <div class="rounded-lg bg-black/60 px-2.5 py-1.5 text-[11px] text-zinc-300 ring-1 ring-white/10 backdrop-blur">
-          <span class="font-medium text-zinc-100">{Viewer.title(@record)}</span>
-          <span class="text-zinc-500"> · </span>{Viewer.image_summary(@record)}
-        </div>
-      </div>
-
-      <%!-- Toolbar: state lives in the hook --%>
-      <div
-        id="viewer-toolbar"
-        phx-update="ignore"
-        class="absolute top-3 right-3 flex items-center gap-1 rounded-xl bg-black/60 p-1 ring-1 ring-white/10 backdrop-blur"
-      >
-        <.tool action="zoom-out" title="Zoom out (−)" icon="hero-minus" />
-        <span data-zoom-label class="w-12 text-center text-[11px] tabular-nums text-zinc-300">
-          100%
-        </span>
-        <.tool action="zoom-in" title="Zoom in (+)" icon="hero-plus" />
-        <div class="mx-1 h-4 w-px bg-white/10" />
-        <.tool action="fit" title="Fit (F)" label="Fit" />
-        <.tool action="zoom-1" title="Actual pixels (1)" label="1:1" />
-        <.tool action="zoom-2" title="2× (2)" label="2:1" />
-        <div class="mx-1 h-4 w-px bg-white/10" />
-        <.tool action="invert" title="Invert (I)" label="Invert" toggle />
-        <div class="group relative">
-          <.tool
-            action="adjust"
-            title="Contrast, brightness and gamma"
-            icon="hero-adjustments-horizontal"
-          />
-          <div
-            data-adjust-panel
-            class="absolute top-full right-0 mt-2 hidden w-56 space-y-3 rounded-xl bg-zinc-900/95 p-3 ring-1 ring-white/10 backdrop-blur"
+      <%!-- Minutiae legend and the pixel under the cursor, below the image --%>
+      <div class="flex h-8 shrink-0 items-center gap-3 border-t border-white/[0.06] bg-zinc-925 px-2 text-[11px]">
+        <%= if @minutiae != [] do %>
+          <button
+            id="toggle-minutiae"
+            type="button"
+            data-toggle-minutiae
+            aria-pressed="true"
+            phx-click={
+              JS.toggle_class("hidden", to: "#minutiae-overlay")
+              |> JS.toggle_attribute({"aria-pressed", "true", "false"})
+            }
+            class="flex items-center gap-1.5 rounded-md px-2 py-0.5 font-medium text-zinc-400 transition hover:text-zinc-100 aria-pressed:bg-white/[0.06] aria-pressed:text-zinc-100"
+            title="Show minutiae (M)"
           >
-            <.slider name="contrast" label="Contrast" min="0.2" max="3" value="1" />
-            <.slider name="brightness" label="Brightness" min="0.2" max="3" value="1" />
-            <.slider name="gamma" label="Gamma" min="0.2" max="3" value="1" />
-            <button
-              data-action="reset"
-              type="button"
-              class="w-full rounded-md py-1 text-[11px] text-zinc-400 ring-1 ring-white/10 transition hover:bg-white/[0.06] hover:text-zinc-200"
-            >
-              Reset (R)
-            </button>
-          </div>
-        </div>
-        <svg width="0" height="0" class="absolute">
-          <filter id="viewer-gamma" color-interpolation-filters="sRGB">
-            <feComponentTransfer>
-              <feFuncR type="gamma" amplitude="1" exponent="1" offset="0" />
-              <feFuncG type="gamma" amplitude="1" exponent="1" offset="0" />
-              <feFuncB type="gamma" amplitude="1" exponent="1" offset="0" />
-            </feComponentTransfer>
-          </filter>
-        </svg>
-      </div>
+            <.icon name="hero-eye" class="size-3.5" /> Minutiae
+          </button>
+          <span class="flex min-w-0 items-center gap-3 truncate text-zinc-400">
+            <.legend label="Ending" count={@counts.ridge_ending} class="rounded-full bg-rose-400" />
+            <.legend label="Bifurcation" count={@counts.bifurcation} class="rounded-sm bg-cyan-400" />
+            <.legend
+              :if={@counts.other > 0}
+              label="Other"
+              count={@counts.other}
+              class="rounded-full bg-amber-300"
+            />
+            <.legend
+              :if={@counts.cores > 0}
+              label="Core"
+              count={@counts.cores}
+              class="rounded-full ring-2 ring-yellow-300"
+            />
+            <.legend
+              :if={@counts.deltas > 0}
+              label="Delta"
+              count={@counts.deltas}
+              class="bg-lime-300 [clip-path:polygon(50%_0,100%_100%,0_100%)]"
+            />
+          </span>
+        <% end %>
 
-      <%!-- Minutiae toggle and legend --%>
-      <div
-        :if={@minutiae != []}
-        class="absolute bottom-3 left-3 flex items-center gap-2 rounded-xl bg-black/60 p-1 pr-3 ring-1 ring-white/10 backdrop-blur"
-      >
-        <button
-          id="toggle-minutiae"
-          type="button"
-          data-toggle-minutiae
-          aria-pressed="true"
-          phx-click={
-            JS.toggle_class("hidden", to: "#minutiae-overlay")
-            |> JS.toggle_attribute({"aria-pressed", "true", "false"})
-          }
-          class="rounded-lg px-2.5 py-1 text-[11px] font-medium text-zinc-400 transition hover:text-zinc-100 aria-pressed:bg-rose-500/20 aria-pressed:text-rose-200"
-          title="Show minutiae (M)"
+        <div
+          id="viewer-readout"
+          phx-update="ignore"
+          data-hint="Scroll to zoom · drag to pan · double-click to fit"
+          class="ml-auto shrink-0 truncate pr-2 text-zinc-500 tabular-nums"
         >
-          Minutiae
-        </button>
-        <span class="flex items-center gap-3 text-[11px] text-zinc-400">
-          <span class="flex items-center gap-1">
-            <span class="size-2 rounded-full bg-rose-400" /> Ending {@counts.ridge_ending}
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="size-2 rounded-sm bg-cyan-400" /> Bifurcation {@counts.bifurcation}
-          </span>
-          <span :if={@counts.other > 0} class="flex items-center gap-1">
-            <span class="size-2 rounded-full bg-amber-300" /> Other {@counts.other}
-          </span>
-          <span :if={@counts.cores > 0} class="flex items-center gap-1">
-            <span class="size-2 rounded-full ring-2 ring-yellow-300" /> Core {@counts.cores}
-          </span>
-          <span :if={@counts.deltas > 0} class="flex items-center gap-1 text-lime-300">
-            △ <span class="text-zinc-400">Delta {@counts.deltas}</span>
-          </span>
-        </span>
-      </div>
-
-      <div
-        id="viewer-readout"
-        phx-update="ignore"
-        hidden
-        class="pointer-events-none absolute right-3 bottom-3 rounded-lg bg-black/60 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 ring-1 ring-white/10 backdrop-blur"
-      >
+          Scroll to zoom · drag to pan · double-click to fit
+        </div>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ImageViewer">
@@ -654,6 +990,7 @@ defmodule NistViewWeb.ViewerComponents do
             this.state = {scale: 1, tx: 0, ty: 0, invert: false, contrast: 1, brightness: 1, gamma: 1, fitMode: true}
             this.viewport = this.el.querySelector("[data-viewport]")
             this.readout = this.el.querySelector("#viewer-readout")
+            this.panel = this.el.querySelector("[data-adjust-panel]")
             this.zoomLabel = this.el.querySelector("[data-zoom-label]")
             this.listeners = []
 
@@ -666,9 +1003,12 @@ defmodule NistViewWeb.ViewerComponents do
             this.on(this.viewport, "pointerleave", () => this.setReadout(""))
             this.on(this.viewport, "dblclick", () => this.fit())
             this.on(window, "keydown", e => this.onKey(e))
+            this.on(document, "pointerdown", e => {
+              if (!e.target.closest("[data-adjust-panel], [data-action=adjust]")) this.panel.classList.add("hidden")
+            })
 
             this.resizer = new ResizeObserver(() => this.state.fitMode ? this.fit() : this.apply())
-            this.resizer.observe(this.el)
+            this.resizer.observe(this.viewport)
             this.loadImage()
           },
 
@@ -722,7 +1062,7 @@ defmodule NistViewWeb.ViewerComponents do
             if (!w || !h) return
             const vw = this.viewport.clientWidth, vh = this.viewport.clientHeight
             if (!vw || !vh) return
-            const scale = Math.min(vw / w, vh / h) * 0.94
+            const scale = Math.min(vw / w, vh / h) * 0.92
             this.state = {...this.state, scale, tx: (vw - w * scale) / 2, ty: (vh - h * scale) / 2, fitMode: true}
             this.apply()
           },
@@ -770,7 +1110,7 @@ defmodule NistViewWeb.ViewerComponents do
             else if (action === "zoom-in") this.zoomTo(s.scale * 1.25)
             else if (action === "zoom-out") this.zoomTo(s.scale / 1.25)
             else if (action === "invert") { s.invert = !s.invert; this.apply() }
-            else if (action === "adjust") this.el.querySelector("[data-adjust-panel]").classList.toggle("hidden")
+            else if (action === "adjust") this.panel.classList.toggle("hidden")
             else if (action === "reset") this.resetAdjustments()
           },
 
@@ -830,17 +1170,20 @@ defmodule NistViewWeb.ViewerComponents do
 
             let text = `x ${x}  y ${y}`
             const ppi = parseFloat(this.el.dataset.ppi)
-            if (ppi > 0) text += `  ·  ${(x / ppi * 25.4).toFixed(2)}, ${(y / ppi * 25.4).toFixed(2)} mm`
+            if (ppi > 0) text += `   ${(x / ppi * 25.4).toFixed(2)}, ${(y / ppi * 25.4).toFixed(2)} mm`
             if (this.pixels) {
               const [r, g, b] = this.pixels.getImageData(x, y, 1, 1).data
-              text += r === g && g === b ? `  ·  ${r}` : `  ·  ${r} ${g} ${b}`
+              text += r === g && g === b ? `   value ${r}` : `   rgb ${r} ${g} ${b}`
             }
             this.setReadout(text)
           },
 
+          // With no pixel under the cursor, shows how to move around instead.
           setReadout(text) {
-            this.readout.textContent = text
-            this.readout.hidden = text === ""
+            this.readout.textContent = text || this.readout.dataset.hint
+            this.readout.classList.toggle("text-zinc-300", text !== "")
+            this.readout.classList.toggle("font-mono", text !== "")
+            this.readout.classList.toggle("text-zinc-500", text === "")
           },
 
           onKey(e) {
@@ -853,6 +1196,7 @@ defmodule NistViewWeb.ViewerComponents do
               "-": () => this.zoomTo(s.scale / 1.25),
               i: () => { s.invert = !s.invert; this.apply() },
               r: () => this.resetAdjustments(),
+              Escape: () => this.panel.classList.add("hidden"),
               m: () => this.el.querySelector("[data-toggle-minutiae]")?.click(),
             }
             const action = actions[e.key]
@@ -877,11 +1221,25 @@ defmodule NistViewWeb.ViewerComponents do
       data-action={@action}
       title={@title}
       aria-pressed={@toggle && "false"}
-      class="grid h-7 min-w-7 place-items-center rounded-lg px-1.5 text-[11px] font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white aria-pressed:bg-sky-500/25 aria-pressed:text-sky-100"
+      aria-label={@title}
+      class="grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-zinc-100 aria-pressed:bg-sky-500/20 aria-pressed:text-sky-200"
     >
       <.icon :if={@icon} name={@icon} class="size-4" />
       <span :if={@label}>{@label}</span>
     </button>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :count, :integer, required: true
+  attr :class, :string, required: true
+
+  defp legend(assigns) do
+    ~H"""
+    <span class="flex items-center gap-1.5">
+      <span class={["size-2 shrink-0", @class]} />
+      {@label} <span class="font-mono text-zinc-200 tabular-nums">{@count}</span>
+    </span>
     """
   end
 
@@ -1090,7 +1448,8 @@ defmodule NistViewWeb.ViewerComponents do
         type="button"
         phx-click="select"
         phx-value-index={@index}
-        class="group overflow-hidden rounded-xl bg-zinc-925 text-left ring-1 ring-white/[0.06] transition hover:-translate-y-0.5 hover:ring-sky-400/40 hover:shadow-xl hover:shadow-black/40"
+        title={"Open #{Positions.name(@position)}"}
+        class="group overflow-hidden rounded-xl bg-zinc-925 text-left ring-1 ring-white/[0.06] transition hover:ring-sky-400/40 hover:shadow-xl hover:shadow-black/40"
       >
         <div class={[
           "relative grid place-items-center overflow-hidden bg-black",
@@ -1108,15 +1467,17 @@ defmodule NistViewWeb.ViewerComponents do
             <% _ -> %>
               <.icon name="hero-arrow-path" class="size-4 text-zinc-600 motion-safe:animate-spin" />
           <% end %>
-          <span class="absolute top-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+        </div>
+        <div class="flex items-start gap-2 border-t border-white/[0.06] px-3 py-2">
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-xs font-medium text-zinc-200">{Positions.name(@position)}</p>
+            <p class="truncate text-[11px] text-zinc-500">
+              Type-{@record.type} · IDC {@record.idc}
+            </p>
+          </div>
+          <span class="shrink-0 rounded bg-white/[0.05] px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
             {@position}
           </span>
-        </div>
-        <div class="px-3 py-2">
-          <p class="truncate text-xs font-medium text-zinc-200">{Positions.name(@position)}</p>
-          <p class="truncate text-[11px] text-zinc-500">
-            Type-{@record.type} · IDC {@record.idc}
-          </p>
         </div>
       </button>
     <% else %>

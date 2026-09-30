@@ -364,8 +364,18 @@ defmodule NistViewWeb.ViewerLive do
         />
 
         <%= if @file do %>
-          <div class="flex min-h-0 flex-1">
+          <div id="workspace" class="flex min-h-0 flex-1">
             <.sidebar streams={@streams} file={@file} error={@error} />
+            <.splitter
+              id="split-sidebar"
+              orientation="vertical"
+              panel="#sidebar"
+              side="left"
+              var="--sidebar-w"
+              min={220}
+              keep={480}
+              label="Resize the record list"
+            />
 
             <main class="flex min-w-0 flex-1 flex-col">
               <.tenprint_card
@@ -390,10 +400,12 @@ defmodule NistViewWeb.ViewerLive do
               </div>
             </main>
           </div>
+          <.status_bar file={@file} error={@error} />
         <% else %>
           <.empty_state upload={@uploads.transaction} />
         <% end %>
       </div>
+      <.shortcuts />
     </Layouts.app>
     """
   end
