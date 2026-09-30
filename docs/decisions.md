@@ -106,3 +106,22 @@ on uninitialised memory. gcc and clang on x86_64 give identical pixels on all
 output, so the difference is contraction and nothing else. `nist_codecs`
 depends on `nbis_ref` until the Rust decoder replaces it; the WSQ hashes in
 the sample tests were re-pinned to the no-FMA output.
+
+**Rust WSQ decoder: a literal port of the wavelet synthesis.** `join_lets` is
+ported statement by statement, with positions as offsets into the whole
+image buffer and a bounds check on every access, instead of a cleaner
+line-by-line filter. NBIS's reads reach outside the subband being joined
+even for valid images, and a rewrite would have to reproduce that anyway. The
+result matches NBIS on all 136 BioCTS streams and on about 29,000 generated
+ones, at about 60 % of NBIS's speed before any tuning.
+
+**Small images are errors.** NBIS reads heap memory outside its buffers for
+images under 33 pixels in either direction (with the standard filters), so
+there is no defined output to match. The Rust decoder rejects them rather
+than invent a result.
+
+**Two decoders in one: `decode` and `decode_strict`.** The public `decode`
+accepts fill bytes before a marker and a `NIST_COM` without `PPI`.
+`decode_strict` rejects them as NBIS does, which gives the differential tests
+a simple rule: if `decode_strict` succeeds, NBIS must succeed with the same
+image.

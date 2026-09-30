@@ -9,6 +9,7 @@ pub mod headers;
 pub mod jp2;
 pub mod jpegl;
 pub mod nbis;
+pub mod wsq;
 
 #[cfg(feature = "nif")]
 mod nif;

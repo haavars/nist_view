@@ -1,8 +1,12 @@
 # WSQ in safe Rust — research and plan
 
-Status 2026-09-30: **research done; step 1 of 7 done** (the `nbis_ref`
-reference crate, see [Steps](#steps)). This document is the hand-over:
-everything found so far, the design decided, and the steps to build it. Related: [security.md](security.md),
+Status 2026-09-30: **steps 1 to 3 of 7 done** (see [Steps](#steps)). The
+decoder is written (`native/nist_codecs/src/wsq.rs`) and gives the same
+pixels as NBIS on every sample image, but the application still decodes with
+NBIS until step 4. This document is the hand-over: everything found so far,
+the design decided, and the steps to build it. What writing the decoder
+showed that the research had missed is under
+[Found while porting](#found-while-porting). Related: [security.md](security.md),
 [fuzzing.md](fuzzing.md), [formats.md](formats.md),
 [decisions.md](decisions.md).
 
@@ -110,7 +114,9 @@ What matters for the decoder:
   support them (DRI is rejected), and the FBI encoders do not write them.
 - Decoders need not handle images narrower or shorter than 400 pixels
   (Part 2, 2.5). NBIS decodes smaller ones (the 128 × 96 fixture), and so
-  must we.
+  must we, down to the size where NBIS itself reads outside its buffers:
+  33 pixels in each direction with the standard filters (see
+  [Found while porting](#found-while-porting)).
 
 ## Other implementations
 
@@ -156,8 +162,14 @@ The same 48 images on x86_64 Linux (2026-09-30, gcc 13.3 and clang 23.1):
 So without contraction the output does not depend on the compiler or the
 optimisation level, and with contraction it depends on which expressions a
 compiler chooses to fuse. SHA-256 of the 48 `off` outputs concatenated in
-file name order: `7c0ecd2269db2ca8df743343b2a45ff7896283c26d5f86be170779bd07d95f35`
-(not yet compared with an arm64 `off` build).
+file name order: `7c0ecd2269db2ca8df743343b2a45ff7896283c26d5f86be170779bd07d95f35`.
+
+On arm64 macOS (2026-09-30), `nbis_ref` built with `-ffp-contract=off` gives
+the two hashes pinned in `test/nist_view/biocts_sample_test.exs`, which were
+computed on x86_64 Linux: `mix precommit` passes there on the step 1 commit
+with the BioCTS samples present. The 48-image checksum above has not been
+compared on arm64; the differential test of step 3 covers all the images on
+whichever machine runs it.
 
 **Decision:** the Rust decoder uses plain IEEE `f32`/`f64` operations, no
 `mul_add`. It then gives the same output on every platform, and its reference
@@ -197,10 +209,19 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
 
 - SOI, then DTT/DQT/DHT/COM segments in any order, then SOF. EOI, SOB or DRI
   before SOF is an error.
-- **Segment lengths are ignored except for DHT and COM.** NBIS reads the
-  frame header, transform table, quantisation table and block header field by
-  field. Match that: honouring the lengths could reject files that NBIS-based
-  systems accept.
+- **The decoder ignores segment lengths except for DHT and COM.** NBIS reads
+  the frame header, transform table, quantisation table and block header
+  field by field. Match that: honouring the lengths could reject files that
+  NBIS-based systems accept.
+- **But the PPI pass skips by them.** Before decoding the blocks, NBIS scans
+  the file again for the `NIST_COM` comment (`getc_nistcom_wsq`), and that
+  scan skips every segment by its length field. If it fails, the decode
+  fails. So up to the first SOB, the lengths must be right after all:
+  - after SOI, every marker must be in `FFA0`–`FFA8`;
+  - a segment is skipped by `length − 2` bytes (16-bit, wrapping), and must
+    end before the last byte of the file;
+  - the scan ends at the first SOB, or at the first COM whose bytes after the
+    length field are `NIST_COM`, whatever that length is.
 - Frame header: black, white, height, width, then M and R as scaled values,
   encoder byte, software u16.
 - **Scaled values:** `v = (float)u16` (or `(float)u32` for filter
@@ -220,7 +241,8 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
   - A sign byte ≠ 0 negates. A length of 0 is an error (the NBIS overflow).
 - Quantisation table: bin centre C, then 64 × (Q, Z), all scaled values.
 - **DHT:** `bytes_left = Lh − 2`; if ≤ 0, error. Then repeat: id, 16 counts,
-  `n = Σcounts` (more than 257 is an error), n values; subtract 17 + n. The
+  `n = Σcounts` (more than 257 is an error, and a table with exactly 257 is
+  an error when a block selects it), n values; subtract 17 + n. The
   first table in a segment may redefine an existing id. **Later tables in
   the same segment may not** (error if already defined, even by an earlier
   segment). Stop when `bytes_left == 0`; if negative, error. Ids ≥ 8 are an
@@ -233,9 +255,14 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
   - The name runs to a space, tab or NUL. A newline does *not* end a name.
   - Skip spaces and tabs; the value runs to a newline or NUL; then skip
     spaces, tabs and newlines.
-  - The last `PPI` entry wins. PPI = `atoi(value)`, and it counts only if > 0.
-  - NBIS *fails the whole decode* when a `NIST_COM` has no `PPI` entry or an
-    empty name. We return `ppi: None` instead.
+  - The last `PPI` entry wins. PPI = `atoi(value)`, and it counts only if
+    > 0. A value that does not fit in an `int` gives no PPI (C leaves that
+    case undefined).
+  - NBIS *fails the whole decode* when a `NIST_COM` has no `PPI` entry. We
+    return `ppi: None` instead. (An empty name, the other error in
+    `string2fet`, cannot occur: the text starts with `NIST_COM`.)
+  - A name or value of 512 bytes or more overflows NBIS's buffers. We just
+    read it.
 
 ### Huffman tables and decoding
 
@@ -345,6 +372,36 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
 3. `t < 0.0` gives 0; `t > 255.0` gives 255; otherwise `t as u8` (truncate).
    NaN gives 0.
 
+## Found while porting
+
+Things the research above did not have, all confirmed against NBIS:
+
+- **NBIS reads outside its buffers on small images.** When a subband half is
+  one sample long, the filter walk in `join_lets` steps back past the start
+  of the line. At the deepest node that is the sample before the buffer. With
+  the standard 9/7 filters this happens for every image under 33 pixels wide
+  or high; other filter lengths move the limit. The read lands in heap
+  memory, so NBIS's output for such an image is whatever was there. The Rust
+  decoder returns an error. Decoding them properly would need our own rule
+  for these sizes; the spec does not require anything below 400 pixels.
+- **A lowpass filter of length 1** makes `join_lets` read `lo[1]`, past the
+  filter. Error.
+- **A Huffman table with 257 values** is accepted when read, but
+  `build_huffsizes` writes past its array when a block selects it. Error at
+  that point.
+- **The PPI pass depends on the segment lengths** (see Parsing above). The
+  research said lengths are ignored except for DHT and COM; that is true only
+  for the decoder proper.
+- **A fifth crash:** the double free after a truncated transform table (see
+  Root causes).
+- **NBIS accepts one coefficient more than the transmitted subbands hold:**
+  the limit check (`ipc > ipc_mx`) runs before a coefficient is stored, not
+  after. The Rust decoder does the same, and errors only when the store would
+  leave the buffer (which is where NBIS writes out of bounds).
+- The BioCTS files contain 136 WSQ streams, two more than the 134 records
+  labelled as WSQ: in `fail-*` files, one is labelled `JPEGB` and one is a
+  Type-4 record with compression code 2.
+
 ## Design
 
 - **New `native/nist_codecs/src/wsq.rs`** with `pub fn decode(data: &[u8]) ->
@@ -369,7 +426,13 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
     FFI inside, mutex for the globals).
   - Never a dependency of `nist_codecs` or `nist_decode` (from step 4 on;
     until then `nist_codecs::nbis` calls it).
-- **Differential test** `native/nbis_ref/tests/compare.rs`: for every WSQ
+- **`decode` and `decode_strict`.** `decode` is the public decoder, with the
+  two leniencies (fill bytes before a marker that ends a block, `NIST_COM`
+  without `PPI`). `decode_strict` fails on those as NBIS does, so that
+  "`decode_strict` succeeds" implies "NBIS succeeds with the same image".
+  That is the property the differential test and fuzz target check.
+- **Differential test** `native/nbis_ref/tests/compare.rs` (as built; see
+  [Steps](#steps) for what it covers). The original plan was: for every WSQ
   image in `test/fixtures` and `test/samples` (skipped when the samples are
   missing), Rust and NBIS pixels and PPI must be identical. Include the images
   extracted from `.an2` files (parse the NIST container minimally, or have
@@ -422,8 +485,33 @@ so). All of this comes from reading `wsq/decoder.c`, `wsq/tableio.c`,
    - Until step 4, `nist_codecs::nbis` calls `nbis_ref`, so `nist_codecs`
      depends on it for now. The application therefore already decodes without
      FMA, and the Elixir hashes were re-pinned here instead of in step 4.
-2. Write `wsq.rs` by following the behaviour list above, section by section.
-3. Write the differential test and get it to 48/48 identical, then unit tests.
+2. ✅ (2026-09-30) Write `wsq.rs` by following the behaviour list above,
+   section by section. About 1,250 lines, no `unsafe`, no dependencies.
+3. ✅ (2026-09-30) Write the differential test and get it to 48/48 identical,
+   then unit tests.
+   - `native/nbis_ref/tests/compare.rs` compares `decode_strict` with NBIS:
+     - **BioCTS:** all 136 WSQ streams in the 96 sample files (found by their
+       first two markers; the test is skipped without the samples) and the
+       synthetic fixture: identical pixels, size and PPI.
+     - **Generated streams:** the fixture's segments recombined for 592
+       sizes (1–12 and 30–50 in each direction, odd and even, and a few
+       larger), 14 filter pairs (odd and even lengths from 1 to 32) and 7
+       block contents, two of them with random coefficients in every
+       transmitted subband. About 58,000 streams; the Rust decoder accepts
+       about 29,000 of them, and all of those are identical to NBIS.
+   - **Rejections checked with AddressSanitizer:** of 2,316 generated
+     streams, NBIS built with ASan decoded cleanly exactly the 556 that the
+     Rust decoder accepts, and had a memory error in `join_lets` on each of
+     the 1,760 that it rejects. The whole differential test also passes with
+     ASan on both the Rust and the C code.
+   - 23 unit tests in `wsq.rs`: the fixture (pinned hash), every truncation
+     of it, 3,000 corrupted copies, table ids, filter lengths, the bit
+     reader's marker rules, fill bytes, the subband geometry for every size
+     up to 70 × 70, `NIST_COM` parsing.
+   - Speed, first measurement: 14.6 megapixels per second against 23.1 for
+     NBIS on the 48 sample images (171 ms against 115 ms for the largest,
+     2.25 megapixels). Every sample access in `join_lets` is bounds-checked;
+     step 6 looks at that.
 4. Switch `nist_decode` and the fuzz target; delete `nbis.rs` and the
    `nbis_ref` dependency of `nist_codecs`; `mix precommit`.
 5. Add the `wsq_diff` target and the corpus replay script; fuzz; minimise

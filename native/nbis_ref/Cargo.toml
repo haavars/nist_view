@@ -11,3 +11,8 @@ path = "src/lib.rs"
 
 [build-dependencies]
 cc = "1"
+
+[dev-dependencies]
+# The decoder under test. (Until step 4 of docs/wsq-port.md it depends on
+# this crate in turn; Cargo allows that for dev-dependencies.)
+nist_codecs = { path = "../nist_codecs", default-features = false }
