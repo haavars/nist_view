@@ -3,8 +3,12 @@ defmodule NistView.Desktop do
   The Elixir side of the desktop shell (`src-tauri`), which talks to it over
   `ElixirKit.PubSub`.
 
-    * Once the endpoint is listening, broadcasts `ready:<url>` on the
-      `messages` topic so the shell can open a window on the real port.
+    * Once the endpoint is listening, broadcasts `ready:<secret> <url>` on
+      the `messages` topic so the shell can open a window on the real port.
+      The secret is the shell's `NIST_VIEW_READY_SECRET`: the shell's PubSub
+      socket takes the first local process that connects, and without the
+      secret a process that got there before this server could send its own
+      URL, and the shell would open a window on it with the launch token.
     * Receives `<id>\\n<path>` on the `open` topic when the shell is asked to
       open a file (file association, command line, second launch), and keeps
       the path under `id` until a viewer window claims it with `take/1`. The
@@ -66,9 +70,15 @@ defmodule NistView.Desktop do
   @impl GenServer
   def handle_continue(:ready, state) do
     {:ok, {_ip, port}} = NistViewWeb.Endpoint.server_info(:http)
-    ElixirKit.PubSub.broadcast("messages", "ready:http://127.0.0.1:#{port}")
+    secret = Application.fetch_env!(:nist_view, :ready_secret)
+    ElixirKit.PubSub.broadcast("messages", ready_message(secret, port))
     {:noreply, state}
   end
+
+  @doc false
+  @spec ready_message(String.t(), :inet.port_number()) :: String.t()
+  def ready_message(secret, port) when is_binary(secret) and secret != "",
+    do: "ready:#{secret} http://127.0.0.1:#{port}"
 
   @impl GenServer
   def handle_call({:put, id, path}, _from, state) do

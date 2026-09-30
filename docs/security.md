@@ -55,6 +55,7 @@ network attackers (the viewer makes no network connections).
 | Strict CSP: `script-src 'self'`, no inline scripts, `frame-ancestors 'none'`, `object-src 'none'` | `NistViewWeb.Router` |
 | Windows cannot navigate away from the server origin and have no Tauri IPC | `src-tauri/src/lib.rs` |
 | Paths to open come only from the shell, by one-time random id; the dev-only `?path=` is disabled in releases | `NistView.Desktop`, `config/dev.exs` |
+| The shell opens windows only on a `ready:` URL that carries its per-launch secret and is on 127.0.0.1 | `src-tauri/src/lib.rs`, `NistView.Desktop` |
 
 Verified on the built release: 403 without the token, a wrong token and for
 image URLs; redirect strips the token; CSP header present; `lsof` shows the
@@ -113,11 +114,17 @@ than crash.
    real BioCTS prints and would have to be minimised first
    (`fuzz/minimise.py`), against a build of the NBIS decoder that was
    removed.
-5. **ElixirKit PubSub authentication.** The shell's PubSub socket on
-   127.0.0.1 accepts the first connection; a local process racing the
-   release could send a fake `ready:` URL, and the shell would put the launch
-   token in that URL. Fix: include a shared secret in `ready:` and check it
-   in the shell.
+5. ~~ElixirKit PubSub authentication.~~ Done 2026-09-30. The shell's
+   PubSub socket on 127.0.0.1 accepts the first connection; a local process
+   racing the release could send a fake `ready:` URL, and the shell would
+   have opened a window on it with the launch token (a page that looks like
+   the viewer, into which the user might drop a file). Now `ready:` carries
+   a per-launch secret (`NIST_VIEW_READY_SECRET`), compared in constant
+   time, and the URL must be `http://127.0.0.1:<port>`. Verified on the
+   built app (macOS arm64): a script that connected first and sent forged
+   `ready:` messages got nothing back and no window opened. What remains is
+   denial of service: the real server then cannot connect, and the app
+   stays up without a window until it is quit.
 6. ~~Crash reports.~~ Done 2026-09-30. A crash logged the viewer's state
    at debug level (the first bytes of the file: TCN, agency, date), and at
    any level the last message (a rendered image arrives as one) and the

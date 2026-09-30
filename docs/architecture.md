@@ -145,9 +145,12 @@ signal gives `{:error, :decoder_crashed}`; one that exceeds the timeout
 
 1. Listens on an ElixirKit PubSub socket and starts the Elixir release
    (`mix phx.server` in `cargo tauri dev`) with `PORT=0`, a 32-byte random
-   `NIST_VIEW_LAUNCH_TOKEN` and `ELIXIRKIT_PUBSUB`.
-2. `NistView.Desktop` broadcasts `ready:http://127.0.0.1:<port>` once the
-   endpoint listens; the shell opens a window on `<url>/?launch=<token>`.
+   `NIST_VIEW_LAUNCH_TOKEN`, a 32-byte random `NIST_VIEW_READY_SECRET` and
+   `ELIXIRKIT_PUBSUB`.
+2. `NistView.Desktop` broadcasts `ready:<secret> http://127.0.0.1:<port>`
+   once the endpoint listens. The shell checks the secret and that the URL
+   is on 127.0.0.1, takes the first such message only, and opens a window on
+   `<url>/?launch=<token>`.
 3. Files from macOS `Opened` events, argv (Windows, Linux) and second
    launches (single-instance plugin) are queued until ready, then sent as
    `<id>\n<path>` on the `open` topic, each followed by a window on

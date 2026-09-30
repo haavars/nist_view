@@ -278,7 +278,6 @@ Details, fuzzing results and open items: [security.md](security.md).
   - longer fuzz runs for lossless JPEG, and JPEG 2000 again with the tag-tree fix (WSQ has had two hours per target)
   - minimised regression inputs for lossless JPEG (WSQ has them)
   - a sandbox for the helper, now defence in depth
-  - authentication for PubSub `ready:`
   - Developer ID signing and notarization, and Windows signing (need certificates)
 
 ## 8. Open questions
