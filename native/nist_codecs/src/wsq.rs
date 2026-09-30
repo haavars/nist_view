@@ -44,6 +44,8 @@ const CODED_SUBBANDS: usize = 60;
 /// Names and values in a `NIST_COM` comment go through 512-byte buffers in
 /// NBIS.
 const NISTCOM_TOKEN_LIMIT: usize = 512;
+/// And NBIS allocates for this many names.
+const NISTCOM_NAME_LIMIT: usize = 100;
 
 pub fn decode(data: &[u8]) -> Result<Pixels, Error> {
     decode_with(data, false)
@@ -405,6 +407,7 @@ fn nistcom_text_ppi(text: &[u8], strict: bool) -> Result<Option<u32>, Error> {
     let text = text.split(|&byte| byte == 0).next().unwrap_or_default();
     let blank = |byte: u8| byte == b' ' || byte == b'\t';
     let mut ppi = None;
+    let mut names = Vec::new();
     let mut pos = 0;
 
     let take = |pos: &mut usize, stop: &dyn Fn(u8) -> bool| {
@@ -421,9 +424,19 @@ fn nistcom_text_ppi(text: &[u8], strict: bool) -> Result<Option<u32>, Error> {
         let value = take(&mut pos, &|byte| byte == b'\n');
         take(&mut pos, &|byte| !blank(byte) && byte != b'\n');
 
-        // NBIS overflows its buffers on these.
-        if strict && (name.len() >= NISTCOM_TOKEN_LIMIT || value.len() >= NISTCOM_TOKEN_LIMIT) {
-            return Err(INVALID);
+        if strict {
+            // NBIS overflows its buffers on these.
+            if name.len() >= NISTCOM_TOKEN_LIMIT || value.len() >= NISTCOM_TOKEN_LIMIT {
+                return Err(INVALID);
+            }
+            // NBIS has room for 100 names, and leaves the values of further
+            // ones uninitialised when it makes more.
+            if !names.contains(&name) {
+                names.push(name);
+                if names.len() > NISTCOM_NAME_LIMIT {
+                    return Err(INVALID);
+                }
+            }
         }
         // The last entry counts.
         if name == b"PPI" {
@@ -431,26 +444,34 @@ fn nistcom_text_ppi(text: &[u8], strict: bool) -> Result<Option<u32>, Error> {
         }
     }
 
-    match ppi {
-        Some(value) => Ok(atoi(value)),
+    match ppi.map(atoi) {
+        Some(Some(value)) => Ok(u32::try_from(value).ok().filter(|&ppi| ppi > 0)),
+        // A number too large for an `int`: what NBIS gets is undefined.
+        Some(None) if strict => Err(INVALID),
+        Some(None) => Ok(None),
         // NBIS fails the whole decode.
         None if strict => Err(INVALID),
         None => Ok(None),
     }
 }
 
-/// C's `atoi`, for a positive result that fits in an `int`.
-fn atoi(text: &[u8]) -> Option<u32> {
+/// C's `atoi`: leading white space, a sign, digits. `None` when the number
+/// does not fit in an `int`, which C leaves undefined.
+fn atoi(text: &[u8]) -> Option<i32> {
     let space = |byte: &u8| matches!(byte, b' ' | b'\t' | b'\n' | 0x0B | 0x0C | b'\r');
     let text = &text[text.iter().take_while(|byte| space(byte)).count()..];
-    let digits = text.strip_prefix(b"+").unwrap_or(text);
+    let (negative, digits) = match text {
+        [b'-', digits @ ..] => (true, digits),
+        [b'+', digits @ ..] => (false, digits),
+        digits => (false, digits),
+    };
 
-    let value = digits
+    let magnitude = digits
         .iter()
         .take_while(|byte| byte.is_ascii_digit())
-        .fold(0u64, |value, &digit| value.saturating_mul(10).saturating_add((digit - b'0') as u64));
+        .fold(0i64, |value, &digit| value.saturating_mul(10).saturating_add((digit - b'0') as i64));
 
-    (value > 0 && value <= i32::MAX as u64).then_some(value as u32)
+    i32::try_from(if negative { -magnitude } else { magnitude }).ok()
 }
 
 /// A Huffman table prepared for decoding bit by bit, as NBIS prepares it:
@@ -1938,6 +1959,22 @@ mod tests {
         let long = [b"NIST_COM 2\nPPI 500\nX ".as_slice(), &[b'y'; 512]].concat();
         assert_eq!(nistcom_text_ppi(&long, false), Ok(Some(500)));
         assert_eq!(nistcom_text_ppi(&long, true), Err(INVALID));
+
+        // What NBIS's `atoi` gives for a number outside `int` is undefined.
+        assert_eq!(nistcom_text_ppi(b"NIST_COM 1\nPPI 4294967796\n", false), Ok(None));
+        assert_eq!(nistcom_text_ppi(b"NIST_COM 1\nPPI 4294967796\n", true), Err(INVALID));
+        assert_eq!(nistcom_text_ppi(b"NIST_COM 1\nPPI -4294966796\n", true), Err(INVALID));
+        assert_eq!(nistcom_text_ppi(b"NIST_COM 1\nPPI -7\n", true), Ok(None));
+
+        // NBIS has room for 100 names; repeated names take no room.
+        let entries = |count: usize| {
+            let mut text = b"NIST_COM 2\nPPI 500\n".to_vec();
+            (2..count).for_each(|index| text.extend(format!("N{index} 1\nPPI 500\n").bytes()));
+            text
+        };
+        assert_eq!(nistcom_text_ppi(&entries(100), true), Ok(Some(500)));
+        assert_eq!(nistcom_text_ppi(&entries(101), true), Err(INVALID));
+        assert_eq!(nistcom_text_ppi(&entries(101), false), Ok(Some(500)));
     }
 
     #[test]

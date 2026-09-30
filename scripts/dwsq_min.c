@@ -1,6 +1,7 @@
 /*
  * Minimal NBIS WSQ decoder driver for comparing builds (docs/wsq-port.md).
- * Decodes each file given and writes the pixels to <file>.<$TAG>.raw.
+ * Decodes each file given and prints OK or ERR for it. With $TAG set, it
+ * also writes the pixels to <file>.<$TAG>.raw.
  *
  *   cd native/nbis_ref
  *   clang -O2 -ffp-contract=off -w -D__NBISLE__ -include c/quiet.h \
@@ -17,9 +18,12 @@ int main(int argc, char **argv) {
     unsigned char *buf = malloc(n); fread(buf, 1, n, f); fclose(f);
     unsigned char *out; int w, h, d, ppi, lossy;
     int ret = wsq_decode_mem(&out, &w, &h, &d, &ppi, &lossy, buf, (int)n);
-    if (ret) { printf("%s ERR %d\n", argv[a], ret); continue; }
-    char path[4096]; snprintf(path, sizeof path, "%s.%s.raw", argv[a], getenv("TAG"));
-    FILE *o = fopen(path, "wb"); fwrite(out, 1, (size_t)w * h, o); fclose(o);
+    if (ret) { printf("%s ERR %d\n", argv[a], ret); free(buf); continue; }
+    printf("%s OK %d %d\n", argv[a], w, h);
+    if (getenv("TAG")) {
+      char path[4096]; snprintf(path, sizeof path, "%s.%s.raw", argv[a], getenv("TAG"));
+      FILE *o = fopen(path, "wb"); fwrite(out, 1, (size_t)w * h, o); fclose(o);
+    }
     free(out); free(buf);
   }
   return 0;

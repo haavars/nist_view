@@ -171,11 +171,12 @@ gives the two hashes pinned in `test/nist_view/biocts_sample_test.exs`, which
 were computed on x86_64 Linux. So the reference does not depend on the
 architecture either.
 
-The Rust decoder was checked on arm64 at the step 4 commit: `mix precommit`
-passes with the BioCTS samples present, and the differential test
+The Rust decoder was checked on arm64 at the step 4 commit and again at the
+step 6 commit, with the bulk paths: `mix precommit` passes with the BioCTS
+samples present, and the differential test
 (`native/nbis_ref/tests/compare.rs`) passes on all 136 streams with the same
-number of generated streams accepted per filter pair as on Linux. The bulk
-paths of step 6 have not been run on arm64 yet.
+number of generated streams accepted per filter pair as on Linux. There the
+decoder is about five times as fast as NBIS (three times on x86_64).
 
 **Decision:** the Rust decoder uses plain IEEE `f32`/`f64` operations, no
 `mul_add`. It then gives the same output on every platform, and its reference
@@ -555,8 +556,26 @@ Things the research above did not have, all confirmed against NBIS:
      under cargo-fuzz and to the notes on decoding time above. The fuzzer
      runs this decoder at 10 to 30 inputs per second, against about 200 for
      NBIS: a reason to do step 6 (speed) before the long runs of step 5.
-5. Add the `wsq_diff` target and the corpus replay script; fuzz; minimise
-   and commit the regression inputs.
+5. **In progress** (2026-09-30). Add the `wsq_diff` target and the corpus
+   replay script; fuzz; minimise and commit the regression inputs.
+   - Done: the `wsq_diff` target (`decode_strict` against NBIS under ASan),
+     the `nbis_wsq` target (NBIS alone, for reproducing its crashes),
+     `fuzz/replay.sh` and `fuzz/minimise.py`. See [fuzzing.md](fuzzing.md).
+   - `decode_strict` now also fails where NBIS's reading of the resolution
+     is undefined: a `PPI` number outside `int`, and more than 100 names in
+     `NIST_COM` (NBIS has room for 100 and leaves the values of further ones
+     uninitialised). `decode` is unchanged.
+   - `replay.sh` over the corpora and the 27 NBIS crash inputs (696 files):
+     no file that NBIS decodes cleanly and the Rust decoder rejects.
+   - `cargo fuzz tmin` does not work for NBIS: it accepts any crash, and
+     reduced every input to the same six bytes (`FFA0 FFA8 0000`, a comment
+     of length 0, where `calloc(-1)` fails). `minimise.py` keeps the crash
+     the same.
+   - Regression inputs committed so far (`fuzz/regressions/wsq`): the double
+     free, the transform table overflow and the Huffman table id. The NULL
+     write in `getc_nextbits_wsq` and the overflow in `unquantize` are still
+     being minimised.
+   - Still running: the long fuzz runs of `wsq` and `wsq_diff`.
 6. ✅ (2026-09-30, done before step 5 so that the fuzzing runs faster)
    Measure speed against NBIS (0.11 s for 2.25 megapixels).
    - Where the time went: 94 % in `join_lets`, 4 % in Huffman decoding.

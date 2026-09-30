@@ -10,9 +10,11 @@ memory errors in C are caught where they happen, not only when they crash.
 | Target | Code under test |
 |---|---|
 | `wsq` | `wsq::decode` (safe Rust) |
+| `wsq_diff` | `wsq::decode_strict` against NBIS (`native/nbis_ref`, C with ASan): whatever the Rust decoder accepts, NBIS must decode to the same pixels, size and PPI without a memory error. NBIS is not run on what the Rust decoder rejects |
+| `nbis_wsq` | NBIS's WSQ decoder alone. Not shipped; this target reproduces and minimises the inputs that crash it (`fuzz/regressions/wsq`) |
 | `jpegl` | `jpegl::decode` (safe Rust) |
 | `jp2` | `jp2::decode` (OpenJPEG C via `jpeg2k`, own 8-bit conversion) |
-| `headers` | `headers::{wsq, jpeg, jp2}` (Rust header readers) |
+| `headers` | `headers::{jpeg, jp2}` (Rust header readers) |
 
 ## Setup (once)
 
@@ -37,6 +39,8 @@ export LLVM_PREFIX=~/anaconda3/envs/nist-llvm
 mix run native/nist_codecs/fuzz/seed.exs   # seed corpora from fixtures and samples
 native/nist_codecs/fuzz/run.sh wsq 600      # target, seconds (FORKS=2 by default)
 native/nist_codecs/fuzz/triage.sh wsq       # group crashes by ASan summary and frame
+native/nist_codecs/fuzz/replay.sh           # WSQ: inputs NBIS decodes but Rust rejects
+native/nist_codecs/fuzz/minimise.py nbis_wsq crash-<hash> out.wsq   # shrink, same crash
 ```
 
 - `seed.exs` extracts every embedded image (up to 256 KB) from
@@ -52,6 +56,18 @@ native/nist_codecs/fuzz/triage.sh wsq       # group crashes by ASan summary and 
   the fuzzer spends its time there and reports timeouts.
 - `triage.sh` replays up to N artifacts and prints one line per distinct
   AddressSanitizer summary and first non-runtime stack frame.
+- `wsq_diff` and `nbis_wsq` start from the `wsq` corpus.
+- `replay.sh` covers the direction `wsq_diff` cannot: it gives every file in
+  the WSQ corpora and artifacts to the Rust decoder, and each one that is
+  rejected to an ASan build of NBIS in a process of its own. It lists the
+  files that NBIS decodes without a memory error. Every such file is either
+  a documented difference (a filter longer than 32 taps) or a bug in the
+  Rust decoder.
+- `minimise.py` shrinks a crashing input while the AddressSanitizer error
+  and the decoder function it is in stay the same, then zeroes every byte
+  the crash does not need. `cargo fuzz tmin` is no use for NBIS: it accepts
+  any crash, and every input ends up as the same six bytes (a comment of
+  length 0, which makes `calloc` fail under ASan).
 
 To reproduce one crash with a full report:
 
