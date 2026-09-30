@@ -19,6 +19,7 @@ default = ["nif"]
 # directly (see fuzz/).
 nif = ["dep:rustler"]
 
-[build-dependencies]
-cc = "1"
 
+[lints.rust]
+# cargo-fuzz builds with `--cfg fuzzing` (see MAX_PIXELS).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

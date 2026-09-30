@@ -1,0 +1,17 @@
+[package]
+name = "nbis_ref"
+version = "0.1.0"
+edition = "2021"
+description = "NBIS 5.0.0's WSQ decoder (C): the development-time reference for the Rust decoder"
+publish = false
+
+[lib]
+name = "nbis_ref"
+path = "src/lib.rs"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+# The decoder under test.
+nist_codecs = { path = "../nist_codecs", default-features = false }

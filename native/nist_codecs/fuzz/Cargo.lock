@@ -155,10 +155,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "nist_codecs"
+name = "nbis_ref"
 version = "0.1.0"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "nist_codecs"
+version = "0.1.0"
+dependencies = [
  "jpeg2k",
  "png",
 ]
@@ -168,6 +174,7 @@ name = "nist_codecs-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
+ "nbis_ref",
  "nist_codecs",
 ]
 

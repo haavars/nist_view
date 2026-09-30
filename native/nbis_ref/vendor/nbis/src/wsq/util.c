@@ -906,7 +906,9 @@ int wsq_reconstruct(float *fdata, const int width, const int height,
 
    num_pix = width * height;
    /* Allocate temporary floating point pixmap. */
-   if((fdata1 = (float *) malloc(num_pix*sizeof(float))) == NULL) {
+   /* nist_view: calloc, because join_lets reads parts of this scratch
+      buffer that it has not written yet. */
+   if((fdata1 = (float *) calloc(num_pix, sizeof(float))) == NULL) {
       fprintf(stderr,"ERROR : wsq_reconstruct : malloc : fdata1\n");
       return(-97);
    }

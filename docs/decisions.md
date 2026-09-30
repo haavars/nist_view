@@ -74,3 +74,69 @@ differential fuzzing and tests.
 BioCTS samples are downloaded into the gitignored `test/samples`; Prüm
 samples are never committed. Fuzz corpora and crash inputs derived from them
 stay out of git until minimised.
+
+## 2026-09-30
+
+**WSQ to be decoded in safe Rust; NBIS kept only as a reference.** Replaying
+the saved fuzz crashes showed that NBIS WSQ still has four memory bugs after
+the M5 patch (the M5 docs wrongly said it was clean). As with lossless JPEG,
+the fix is our own decoder. NBIS moves to a development-only crate for
+differential tests and fuzzing. Details and plan: [wsq-port.md](wsq-port.md).
+
+**WSQ arithmetic without FMA.** NBIS's float code gives different pixels
+depending on whether the compiler fuses multiply-adds. It differs on 46 of 48
+sample images, in 0.0007 % of pixels, always by 1. The earlier "bit-identical to
+`dwsq`" check held only for arm64 clang builds. The Rust decoder uses plain
+IEEE operations, so every platform gives the same output. Its reference is
+NBIS built with `-ffp-contract=off`, and the pinned hashes will change
+accordingly.
+
+**Match NBIS's parsing, not a stricter reading of the spec.** NBIS ignores the
+declared lengths of most WSQ segments. Files in the wild are made for
+NBIS-derived decoders, so the port follows NBIS wherever NBIS decodes without
+memory errors. It is more lenient only where the spec allows it (fill bytes
+before markers) or where NBIS fails for no good reason (a `NIST_COM` without
+`PPI`).
+
+**NBIS moved to `native/nbis_ref`, built without FMA.** The vendored sources,
+their glue and the FFI wrapper are now a crate of their own, compiled with
+`-ffp-contract=off` and with two `calloc` patches so its output never depends
+on uninitialised memory. gcc and clang on x86_64 give identical pixels on all
+48 sample images that way, and clang with FMA on x86_64 reproduces the arm64
+output, so the difference is contraction and nothing else. `nist_codecs`
+depends on `nbis_ref` until the Rust decoder replaces it; the WSQ hashes in
+the sample tests were re-pinned to the no-FMA output.
+
+**Rust WSQ decoder: a literal port of the wavelet synthesis.** `join_lets` is
+ported statement by statement, with positions as offsets into the whole
+image buffer and a bounds check on every access, instead of a cleaner
+line-by-line filter. NBIS's reads reach outside the subband being joined
+even for valid images, and a rewrite would have to reproduce that anyway. The
+result matches NBIS on all 136 BioCTS streams and on about 29,000 generated
+ones, at about 60 % of NBIS's speed before any tuning.
+
+**Small images are errors.** NBIS reads heap memory outside its buffers for
+images under 33 pixels in either direction (with the standard filters), so
+there is no defined output to match. The Rust decoder rejects them rather
+than invent a result.
+
+**WSQ filters of more than 32 taps are refused.** NBIS reads filter lengths
+up to 255, and decoding time grows with the length: a 100-megapixel image
+would take minutes (before the tuning below). 32 is the specification's
+maximum, and real files use 9 and 7. This is the only place where the Rust
+decoder rejects input that NBIS decodes correctly.
+
+**Two decoders in one: `decode` and `decode_strict`.** The public `decode`
+accepts fill bytes before a marker and a `NIST_COM` without `PPI`.
+`decode_strict` rejects them as NBIS does, which gives the differential tests
+a simple rule: if `decode_strict` succeeds, NBIS must succeed with the same
+image.
+
+**WSQ speed: bulk computation of the middle of each line, not a rewrite.**
+The literal port of `join_lets` stays and handles the ends of every line.
+For the stretch where the filters do not reflect, which is nearly all of a
+line, the same sums are computed in bulk: row by row across all columns for
+the column pass, and a whole line per filter coefficient for the row pass.
+No sample's operations change or change order, so the output stays identical
+to NBIS, which the differential test confirms. The decoder went from 14 to 70
+megapixels per second; NBIS does 23.

@@ -130,13 +130,17 @@ defmodule NistView.BioctsSampleTest do
     end
   end
 
-  # SHA-256 of NBIS 5.0.0 `dwsq -raw_out` output for these images. All 47
-  # distinct WSQ images in the set were compared bit for bit on 2026-09-29.
+  # SHA-256 of NBIS 5.0.0 output for these images, with NBIS built without
+  # fused multiply-add (`-ffp-contract=off`). That is the arithmetic the C
+  # source states, and it is the same on every platform and compiler; a
+  # build that fuses (clang's default on arm64) differs by 1 in a few pixels
+  # (docs/wsq-port.md). All 47 distinct WSQ images in the set were compared
+  # bit for bit on 2026-09-30.
   @dwsq_sha256 [
     {"pass-type-4-tpcard.an2", 1,
-     "2f90d78455d8e23dc2975688d085fba70a067995d5b0a725a57ba6996d7e35dd"},
+     "0733c5da5921b01d10d4814d40648fb0e5009be523252cb9a531bcd8b972db63"},
     {"pass-type-14-mandatory-only.an2", 0,
-     "68d14981dcea908214713affbd423840ba089dfb574d194bd0a4f356cff74f6a"}
+     "0f4dc005dbc2de9049142433ef6d19703907b1b604529b2d69d30651609f568d"}
   ]
 
   test "WSQ decoding is bit-identical to NBIS dwsq" do

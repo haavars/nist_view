@@ -10,6 +10,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 nist_codecs = { path = "..", default-features = false }
+# The reference for the differential target. Development only.
+nbis_ref = { path = "../../nbis_ref" }
 
 # Not part of any parent workspace.
 [workspace]
@@ -18,6 +20,20 @@ members = ["."]
 [[bin]]
 name = "wsq"
 path = "fuzz_targets/wsq.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "wsq_diff"
+path = "fuzz_targets/wsq_diff.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nbis_wsq"
+path = "fuzz_targets/nbis_wsq.rs"
 test = false
 doc = false
 bench = false

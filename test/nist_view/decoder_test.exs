@@ -36,7 +36,7 @@ defmodule NistView.DecoderTest do
              )
   end
 
-  test "survives every input the fuzzer found crashing NBIS" do
+  test "returns an error for every input the fuzzer found crashing NBIS" do
     for path <- Path.wildcard("native/nist_codecs/fuzz/regressions/*/*") do
       format = path |> Path.dirname() |> Path.basename() |> String.to_existing_atom()
       assert {:error, _} = Decoder.decode(format, File.read!(path)), path

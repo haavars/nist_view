@@ -2,11 +2,13 @@ defmodule NistView.Decoder do
   @moduledoc """
   Decodes WSQ, lossless JPEG and JPEG 2000 in a separate OS process.
 
-  The decoders are C (NBIS and OpenJPEG) running on untrusted files, and
-  fuzzing found memory errors in NBIS within a minute. Inside a NIF such a
-  bug could crash or silently corrupt the whole BEAM; in the `nist_decode`
-  helper (`native/nist_decode`) it can only end that process, which is
-  reported as `{:error, :decoder_crashed}`.
+  The files are untrusted. JPEG 2000 is decoded by C code (OpenJPEG), and a
+  memory error there inside a NIF could crash or silently corrupt the whole
+  BEAM; in the `nist_decode` helper (`native/nist_decode`) it can only end
+  that process, which is reported as `{:error, :decoder_crashed}`. WSQ and
+  lossless JPEG are decoded in safe Rust. They run in the helper too, which
+  contains a panic, an allocation failure or a hang in the same way. (Both
+  used NBIS's C decoders until fuzzing found memory errors in them.)
 
   Each call starts a helper, sends the image, waits for the pixels and
   closes it. A helper that takes longer than the timeout is killed.

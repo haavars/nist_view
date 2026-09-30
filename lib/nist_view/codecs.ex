@@ -1,7 +1,7 @@
 defmodule NistView.Codecs do
   @moduledoc """
   PNG encoding and colour conversion in Rust (`native/nist_codecs`), on
-  dirty CPU schedulers. Both are safe Rust; the C image decoders run out of
+  dirty CPU schedulers. Both are safe Rust; the image decoders run out of
   process instead (`NistView.Decoder`).
 
   A decoded image is `%{width, height, channels, bit_depth, ppi,

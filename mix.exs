@@ -107,7 +107,8 @@ defmodule NistView.MixProject do
         "deps.unlock --unused",
         "format",
         "test",
-        "cmd --cd native/nist_codecs cargo test --release --quiet"
+        "cmd --cd native/nist_codecs cargo test --release --quiet",
+        "cmd --cd native/nbis_ref cargo test --release --quiet"
       ]
     ]
   end

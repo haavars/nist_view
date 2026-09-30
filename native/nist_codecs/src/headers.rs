@@ -1,5 +1,6 @@
 //! Reads image dimensions from headers, so oversized images are refused
-//! before any decoder allocates for them.
+//! before any decoder allocates for them. (The WSQ decoder reads its own
+//! frame header, the way NBIS does.)
 
 fn u16_at(data: &[u8], pos: usize) -> Option<u32> {
     data.get(pos..pos + 2)
@@ -9,27 +10,6 @@ fn u16_at(data: &[u8], pos: usize) -> Option<u32> {
 fn u32_at(data: &[u8], pos: usize) -> Option<u32> {
     data.get(pos..pos + 4)
         .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
-}
-
-/// WSQ: walks the marker segments after SOI (0xFFA0) to the frame header
-/// (SOF, 0xFFA2): Lf, A, B, Y (height), X (width), ...
-pub fn wsq(data: &[u8]) -> Option<(u32, u32)> {
-    if u16_at(data, 0)? != 0xFFA0 {
-        return None;
-    }
-
-    let mut pos = 2;
-    loop {
-        let marker = u16_at(data, pos)?;
-        let len = u16_at(data, pos + 2)? as usize;
-
-        match marker {
-            0xFFA2 => return Some((u16_at(data, pos + 8)?, u16_at(data, pos + 6)?)),
-            // Tables and comments may come before the frame header.
-            0xFFA4..=0xFFA8 if len >= 2 => pos += 2 + len,
-            _ => return None,
-        }
-    }
 }
 
 /// JPEG (any SOFn): walks the marker segments after SOI (0xFFD8) to the
@@ -146,7 +126,6 @@ mod tests {
 
     #[test]
     fn truncated_headers_are_none() {
-        assert_eq!(wsq(&[0xFF, 0xA0, 0xFF]), None);
         assert_eq!(jpeg(&[0xFF, 0xD8, 0xFF, 0xC0, 0x00]), None);
         assert_eq!(jp2(&[0xFF, 0x4F, 0xFF, 0x51]), None);
         assert_eq!(jp2(b"\0\0\0\x0cjP  \r\n\x87\n\0\0"), None);

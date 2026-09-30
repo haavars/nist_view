@@ -1,6 +1,7 @@
 //! The Elixir interface, `NistView.Codecs`: PNG encoding and colour
-//! conversion, both safe Rust. The C decoders are deliberately not exposed
-//! here; they run in the `nist_decode` helper process (NistView.Decoder).
+//! conversion, both safe Rust. The image decoders are deliberately not
+//! exposed here; they run in the `nist_decode` helper process
+//! (NistView.Decoder).
 //! Every function runs on a dirty CPU scheduler; errors become atoms.
 
 use crate::Error;
