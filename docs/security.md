@@ -86,9 +86,11 @@ than crash.
    Out-of-process decoding contains crashes, but a memory-corruption exploit
    in OpenJPEG would still run with the user's privileges. OpenJPEG (JPEG
    2000) is the only C left that parses untrusted data; WSQ and lossless
-   JPEG are safe Rust. Two ways to close this, **to be chosen when the WSQ
-   fuzzing is finished** (options written down 2026-09-30, nothing tried
-   yet):
+   JPEG are safe Rust. Two ways to close this, **still to be chosen**.
+   `hayro-jpeg2000` has been evaluated ([jp2-rust-eval.md](jp2-rust-eval.md)):
+   lossless output is identical to OpenJPEG, but the published crate is less
+   accurate on lossy images (0.6 to 2.1 dB on a fingerprint) until a small
+   fix for how it reconstructs coefficients is applied.
 
    | Option | Memory-safe | Notes |
    |---|---|---|
@@ -97,18 +99,7 @@ than crash.
    | `openjp2`, the other backend of the `jpeg2k` crate | No | OpenJPEG translated to Rust by c2rust, still full of `unsafe`. No gain |
    | Our own decoder, as for WSQ | Yes | JPEG 2000 is a far larger standard than WSQ. Not worth it while the first option exists |
 
-   Proposed order: evaluate `hayro-jpeg2000` first, the way the WSQ decoder
-   was checked. Decode the 12 distinct BioCTS JPEG 2000 images and the
-   fixtures with both decoders, keep OpenJPEG as a development-only
-   reference, and fuzz. To find out:
-   - Pixels: the tests pin `opj_decompress` hashes. Lossless images (`JP2L`)
-     must be identical; lossy ones may differ in rounding, and then we decide
-     whether that is acceptable.
-   - Our odd cases: signed samples, more than 8 bits, subsampled components,
-     sYCC.
-   - Speed: its authors expect it to be somewhat slower than OpenJPEG.
-
-   If it holds, nothing shipped parses untrusted data in C, and a sandbox
+   If the crate is adopted with that fix, nothing shipped parses untrusted data in C, and a sandbox
    becomes defence in depth instead of the main containment. The helper
    process stays either way: it contains panics, hangs and memory use. If it
    does not hold, sandbox the helper.

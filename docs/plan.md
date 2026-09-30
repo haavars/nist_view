@@ -4,7 +4,7 @@ A cross-platform desktop viewer for ANSI/NIST-ITL transaction files (`.nst`, `.a
 
 Stack: **Elixir/Phoenix LiveView** for the UI and parsing, **one Rust NIF** for image codecs, and **Tauri + ElixirKit** as the desktop shell.
 
-Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan).
+Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan), [jp2-rust-eval](jp2-rust-eval.md) (a safe-Rust JPEG 2000 decoder, evaluated).
 
 ---
 

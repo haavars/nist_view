@@ -1,0 +1,73 @@
+--- a/src/j2c/bitplane.rs	2006-07-24 03:21:28.000000000 +0200
++++ b/src/j2c/bitplane.rs	2026-09-30 13:30:03.910870696 +0200
+@@ -278,7 +278,15 @@
+     }
+ 
+     fn push_bit_at(&mut self, bit: u32, position: u8) {
+-        self.0 |= bit << position;
++        // PATCH (evaluation): magnitudes are stored shifted up by one bit, with
++        // a marker bit just below the last bit decoded. The marker is half of
++        // that bit's weight: the midpoint of what is still unknown.
++        // A zero for a coefficient that is not significant yet changes nothing.
++        if bit == 0 && self.0 & 0x7FFF_FFFF == 0 {
++            return;
++        }
++        let mask = 1_u32 << (position + 1);
++        self.0 = (self.0 & !mask) | (bit << (position + 1)) | (1 << position);
+     }
+ }
+ 
+@@ -727,9 +735,8 @@
+             if ctx.should_decode_refinement(*cur_pos) {
+                 let ctx_label = context_label_magnitude_refinement_coding(*cur_pos, ctx);
+                 let bit = decoder.read_bit(ctx.arithmetic_decoder_context(ctx_label))?;
+-                if bit == 1 {
+-                    ctx.push_magnitude_bit(*cur_pos, bit);
+-                }
++                // PATCH (evaluation): a zero bit moves the midpoint marker too.
++                ctx.push_magnitude_bit(*cur_pos, bit);
+                 ctx.set_magnitude_refined(*cur_pos);
+             }
+ 
+@@ -1346,13 +1353,12 @@
+         if should_decode_refinement {
+             let ctx_label = magnitude_refinement_context(shifted_flags);
+             let bit = decoder.read_bit(&mut ctx.contexts[ctx_label as usize]);
+-            if bit == 1 {
+-                push_magnitude_bit(
+-                    ctx,
+-                    column.coefficient_idx + coefficient_in_stripe as usize * column.stride,
+-                    bit,
+-                );
+-            }
++            // PATCH (evaluation): a zero bit moves the midpoint marker too.
++            push_magnitude_bit(
++                ctx,
++                column.coefficient_idx + coefficient_in_stripe as usize * column.stride,
++                bit,
++            );
+             *flags |= FLAG_MAGNITUDE_REFINED_THIS << shift;
+         }
+     }
+--- a/src/j2c/decode.rs	2006-07-24 03:21:28.000000000 +0200
++++ b/src/j2c/decode.rs	2026-09-30 13:27:08.401935631 +0200
+@@ -406,9 +406,17 @@
+             for coefficients in tile_ctx.bit_plane_decode_context.coefficient_rows() {
+                 let out_row = &mut base_store[base_idx..];
+ 
++                let reversible = component_info.quantization_info.quantization_style
++                    == QuantizationStyle::NoQuantization;
+                 for (output, coefficient) in out_row.iter_mut().zip(coefficients.iter().copied()) {
+-                    *output = coefficient.get() as f32;
+-                    *output *= dequantization_step;
++                    // PATCH (evaluation): the stored value is twice the magnitude
++                    // plus the midpoint marker.
++                    if reversible {
++                        *output = (coefficient.get() / 2) as f32;
++                    } else {
++                        *output = coefficient.get() as f32 * 0.5;
++                        *output *= dequantization_step;
++                    }
+                 }
+ 
+                 base_idx += sub_band.rect.width() as usize;
