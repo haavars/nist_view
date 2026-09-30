@@ -6,7 +6,7 @@ with the local patches listed below. NBIS is public domain (17 U.S.C. §105);
 see the licence header in each file.
 
 It exists to check the safe-Rust WSQ decoder against: `nbis_ref::decode_wsq`
-is the reference for differential tests and fuzzing (`docs/wsq-port.md`). It
+is the reference for differential tests and fuzzing (`docs/wsq.md`). It
 has known memory bugs and must not ship: neither `nist_codecs` nor
 `nist_decode` depends on it. Its own tests (`tests/compare.rs`) depend on
 `nist_codecs` to compare the two decoders.
@@ -64,7 +64,7 @@ in `float`, and a compiler that fuses `a * b + c` into one instruction rounds
 once instead of twice. Clang does that by default where the target has FMA
 (arm64), which changes 285 of 39 million pixels by 1 across the sample images.
 Without contraction, gcc and clang at `-O2` and `-O3` on x86_64 give identical
-pixels on all 48 images. See `docs/wsq-port.md`.
+pixels on all 48 images. See `docs/wsq.md`.
 
 ## Known unpatched bugs
 
@@ -73,7 +73,7 @@ in `getc_nextbits_wsq`, heap overflows in `getc_transform_table` and
 `unquantize`, a global overflow in `getc_huffman_table_wsq`, a double free of
 the filter arrays after a truncated transform table, and a `memcpy` of −1
 bytes for a comment of length 1. There are latent ones too. Root causes are
-in `docs/wsq-port.md`, and one input for each is in
+in `docs/wsq.md`, and one input for each is in
 `native/nist_codecs/fuzz/regressions/wsq`. They are left unpatched on
 purpose: the Rust decoder replaced this code, and the reference is only given
 input that the Rust decoder accepts.

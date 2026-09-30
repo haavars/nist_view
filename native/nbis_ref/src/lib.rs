@@ -2,7 +2,7 @@
 //! without fused multiply-add.
 //!
 //! This is the reference the Rust decoder is compared against in tests and
-//! differential fuzzing (docs/wsq-port.md). It has known memory bugs on
+//! differential fuzzing (docs/wsq.md). It has known memory bugs on
 //! malformed input: never ship it, and only hand it untrusted bytes under
 //! AddressSanitizer or in a process that may crash.
 

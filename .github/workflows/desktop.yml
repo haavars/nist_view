@@ -1,4 +1,4 @@
-# Builds the desktop bundles for every target (docs/plan.md §5).
+# Builds the desktop bundles for every target (docs/plan.md, "Build targets").
 #
 # Signing: macOS builds are signed ad hoc unless the APPLE_* secrets are set,
 # and Windows builds are unsigned unless the AZURE_* secrets are set.

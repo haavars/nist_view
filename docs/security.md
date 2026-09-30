@@ -1,7 +1,7 @@
 # NIST Viewer — Security and data handling
 
-Status as of 2026-09-29 (M5 in progress). What the viewer protects, how,
-what fuzzing found, and what is still open.
+Status as of 2026-09-30. What the viewer protects, how, what fuzzing found,
+and what is still open.
 
 ## What we protect against
 
@@ -24,13 +24,13 @@ network attackers (the viewer makes no network connections).
 | Property tests: generated transactions round-trip; truncation, corruption and arbitrary bytes never raise | `test/nist_view/parser_property_test.exs` |
 | Decoders read the image size from the header and refuse images over 100 megapixels before allocating | `native/nist_codecs/src/headers.rs`, `check_dimensions` |
 | JPEG 2000 decoding is also bounded by an estimate of its memory, 2 GiB, which a 100-megapixel colour image would exceed | `native/nist_codecs/src/jp2.rs`, `MAX_DECODE_BYTES` |
-| A decode is bounded, not cheap: a WSQ file of a few hundred bytes can declare 100 megapixels and then costs 1 to 3 seconds of CPU and about 1 GB in the helper (measured; filters are capped at the specification's 32 taps). The timeout below is what ends anything slower | `native/nist_codecs/src/wsq.rs`, [`wsq-port.md`](wsq-port.md#found-while-porting) |
-| **Image decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. All three decoders are safe Rust; nothing in the helper is C. A crash or hang is reported, not fatal. No C code is loaded into the BEAM: the NIF only has safe-Rust PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
-| Lossless JPEG decoded by our own safe-Rust decoder instead of NBIS | `native/nist_codecs/src/jpegl.rs` |
-| WSQ decoded by our own safe-Rust decoder instead of NBIS (2026-09-30), and tested to give the same pixels. NBIS had seven memory bugs reachable from a file (one patched in our copy, six not); it is now only a development-time reference | `native/nist_codecs/src/wsq.rs`, `native/nbis_ref/README.md`, [`wsq-port.md`](wsq-port.md) |
-| Fuzzing of every decoder with AddressSanitizer on both Rust and C | [`fuzzing.md`](fuzzing.md) |
+| A decode is bounded, not cheap: a WSQ file of a few hundred bytes can declare 100 megapixels and then costs 1 to 3 seconds of CPU and about 1 GB in the helper. The timeout below ends anything slower | [`wsq.md`](wsq.md#speed) |
+| **Image decoders run in a separate process** (`nist_decode`), one per image, with a 60 s timeout. A crash or hang is reported, not fatal. The NIF loaded into the BEAM has only PNG encoding and colour conversion | `NistView.Decoder`, `native/nist_decode` |
+| **No C parses a file.** WSQ and lossless JPEG are decoded by our own safe-Rust decoders, JPEG 2000 by a patched copy of the safe-Rust `hayro-jpeg2000`. NBIS and OpenJPEG are development-time references only | [`wsq.md`](wsq.md), [`jp2.md`](jp2.md), `native/nist_codecs/src/jpegl.rs` |
+| Fuzzing of every decoder with AddressSanitizer | [`fuzzing.md`](fuzzing.md) |
 | Format detection by content, so a label cannot route data to the wrong decoder | `NistView.ImageFormat` |
 | Atoms are never created from input (`String.to_existing_atom` only for known values) | `ViewerLive` |
+| Client events are validated: malformed, out-of-range or unknown events are ignored, not crashed on | `ViewerLive` |
 
 ### Data handling
 
@@ -42,7 +42,8 @@ network attackers (the viewer makes no network connections).
 | No writes to disk anywhere in the app. (`mix nist.dump --png` writes files only on explicit request; it is a development tool) | — |
 | No database (Ecto and Postgres removed), no mailer, no telemetry upload | — |
 | Logs contain request paths, not field values or image bytes; the image token parameter is filtered | Phoenix logger |
-| Crash reports leave out process state, the last message and stack-trace arguments; fields and images do not show their contents in `inspect` | `NistView.LogRedaction`, `NistView.Field`, `NistView.ImageRef` |
+| Crash reports leave out process state, the last message and stack-trace arguments; fields and images do not show their contents in `inspect`. An exception that itself carries a raw binary or plain map from the file (a `MatchError` on a field's value, say) can still show it, up to the inspect limit | `NistView.LogRedaction`, `NistView.Field`, `NistView.ImageRef` |
+| No browser storage: panel sizes last for the window only, since `localStorage` is written to disk. No clipboard copy of field values | `ViewerComponents.splitter/1` |
 
 ### Local access
 
@@ -55,92 +56,53 @@ network attackers (the viewer makes no network connections).
 | Strict CSP: `script-src 'self'`, no inline scripts, `frame-ancestors 'none'`, `object-src 'none'` | `NistViewWeb.Router` |
 | Windows cannot navigate away from the server origin and have no Tauri IPC | `src-tauri/src/lib.rs` |
 | Paths to open come only from the shell, by one-time random id; the dev-only `?path=` is disabled in releases | `NistView.Desktop`, `config/dev.exs` |
-| The shell opens windows only on a `ready:` URL that carries its per-launch secret and is on 127.0.0.1 | `src-tauri/src/lib.rs`, `NistView.Desktop` |
+| The shell opens windows only on a `ready:` URL that carries its per-launch secret (constant-time compare) and is `http://127.0.0.1:<port>`. The shell's PubSub socket accepts the first local connection, so without this a process that got there first could have had a viewer window opened on its own page, launch token included | `src-tauri/src/lib.rs`, `NistView.Desktop` |
 
 Verified on the built release: 403 without the token, a wrong token and for
 image URLs; redirect strips the token; CSP header present; `lsof` shows the
-socket bound to 127.0.0.1.
+socket bound to 127.0.0.1; a script that connected to the PubSub socket first
+and sent forged `ready:` messages got nothing back and no window opened. What
+it can still do is keep the app from starting (it stays up without a window).
 
 ## Fuzzing results
 
-Ten-minute campaigns per decoder with AddressSanitizer on the C code
-(2026-09-29). Details and how to rerun: [`fuzzing.md`](fuzzing.md).
+With AddressSanitizer. How to run and details: [`fuzzing.md`](fuzzing.md).
 
 | Decoder | Result | Action |
 |---|---|---|
-| NBIS WSQ | Stack buffer overflow in `huffman_decode_data_mem` (unbounded code-length loop over `maxcode[]`), hit by 23 inputs. **Correction (2026-09-30):** the "0 crashes after the patch" result was wrong. The 9 saved inputs in `fuzz/artifacts/wsq/` still crash the patched build: NULL write in `getc_nextbits_wsq` (6), heap overflow in `unquantize` (1), heap overflow in `getc_transform_table` (1), global overflow in `getc_huffman_table_wsq` (1) | First bug patched. The rest are to be fixed by replacing NBIS with a safe-Rust decoder; root causes and plan in [`wsq-port.md`](wsq-port.md) |
-| NBIS lossless JPEG | Many bugs: heap buffer overflows (`decode_data`, `getc_byte`, `jpegl_decode_mem`), stack buffer overflow and underflow and a use-after-free in `update_IMG_DAT_decode`, segfaults; 797 crashing inputs in 10 minutes | Replaced by a safe-Rust decoder; NBIS code removed |
-| Rust lossless JPEG (new) | 0 crashes in 4.8 million inputs | — |
-| Rust WSQ (new, 2026-09-30) | 115 minutes: 0 crashes, timeouts or out-of-memory in 1.5 million inputs. Against NBIS (`wsq_diff`, 115 minutes, 287,000 inputs): no difference in pixels, size or PPI, and no memory error in NBIS on anything the Rust decoder accepts | One finding in the first ten minutes, before the long run: decoding time follows the size a file declares (see Controls). NBIS: seven memory bugs in all; the six that are not patched in the reference each have a regression input |
-| OpenJPEG (JPEG 2000) | 0 crashes | Replaced on 2026-09-30 by a safe-Rust decoder, to have no C on untrusted input |
-| Rust JPEG 2000 (new, 2026-09-30) | 110 minutes, 2.0 million inputs: 0 crashes, 0 out-of-memory. 18 slow inputs: small files declaring very long, thin images took 1 to 8 seconds in a normal build | Cause: building the crate's tag trees took time in the square of a precinct's longer side; with thin tiles a valid 171 KB file took 23 s. Fixed in our copy of the crate; the 18 now take about 0.1 s ([`jp2-port.md`](jp2-port.md#slow-inputs)) |
-| Header readers (Rust) | 0 crashes in 25 million inputs | — |
+| NBIS WSQ (C) | Seven memory bugs reachable from a file: stack, heap and global overflows, a NULL write, a double free, a negative `memcpy` ([wsq.md](wsq.md#why-not-nbis)) | Replaced by our own Rust decoder; NBIS kept as a development reference, one regression input per bug |
+| NBIS lossless JPEG (C) | Many: heap and stack overflows, a use-after-free, segfaults; 797 crashing inputs in 10 minutes | Replaced by our own Rust decoder; removed |
+| OpenJPEG (C) | No crash in 10 minutes | Replaced anyway, to have no C on untrusted input ([jp2.md](jp2.md)) |
+| Rust WSQ | 1.5 million inputs in 115 minutes, and 287,000 against NBIS: no crash, no difference from NBIS | — |
+| Rust JPEG 2000 | 2.0 million inputs in 110 minutes: no crash; 18 slow inputs | Slow tag trees, fixed in our copy of the crate ([jp2.md](jp2.md#slow-inputs)) |
+| Rust lossless JPEG | 4.8 million inputs: no crash | Only ten minutes; a long run is open |
+| Rust header readers | 25 million inputs: no crash | — |
 
-Decision (the plan's M5 question): **decode out of process.** The WSQ bug
-was found within the first minute, in code that would otherwise have run
-inside the BEAM, where a memory error could corrupt state silently rather
-than crash.
+Decision (M5): **decode out of process.** The first WSQ bug was found within
+a minute, in code that would otherwise have run inside the BEAM, where a
+memory error could corrupt state silently rather than crash.
 
 ## Open items
 
-0. ~~Replace NBIS WSQ with safe Rust.~~ Done 2026-09-30
-   ([`wsq-port.md`](wsq-port.md)): decoded in safe Rust, identical to NBIS on
-   all samples, fuzzed alone and against NBIS.
-1. **Sandbox the helper** (defence in depth). No C parses untrusted data
-   any more: JPEG 2000 has been decoded by the safe-Rust `hayro-jpeg2000`
-   since 2026-09-30 ([`jp2-port.md`](jp2-port.md); the options that were
-   weighed are in [`jp2-rust-eval.md`](jp2-rust-eval.md)). A memory-safety
-   bug would now have to be in the Rust compiler or standard library. The
-   helper still runs with the user's privileges and needs only stdin and
-   stdout, so dropping the rest remains worth doing, at lower priority: a
-   sandbox profile on macOS, seccomp and landlock on Linux, a job object and
-   a restricted token on Windows.
-   - The JPEG 2000 decoder gives the same pixels on x86_64 and arm64. The
-     fix it needs is carried in our copy of the crate
-     (`native/hayro-jpeg2000/PATCHES.md`) and is deliberately not reported
-     upstream while this is a proof of concept.
-2. **libjpeg-turbo as reference.** Decided: fuzz our lossless JPEG decoder
-   differentially against libjpeg-turbo 3.2 (dev-only, not shipped).
-   Verified by hand that it decodes the NBIS fixtures identically; the fuzz
-   target is not written yet.
-3. **Longer fuzzing.** WSQ has had two hours per target and JPEG 2000 just
-   under two; lossless JPEG and the header readers only ten minutes, which
-   is a smoke test. Run each for hours (`fuzz/overnight.sh`), JPEG 2000 again
-   now that its slow inputs are fixed, and consider OSS-Fuzz-style
-   continuous runs in CI.
-4. **Regression inputs.** Done for WSQ: six inputs, one per NBIS bug, in
-   `native/nist_codecs/fuzz/regressions/wsq/`, which `NistView.DecoderTest`
-   runs. Not done for lossless JPEG: those crash inputs are mutations of
-   real BioCTS prints and would have to be minimised first
-   (`fuzz/minimise.py`), against a build of the NBIS decoder that was
-   removed.
-5. ~~ElixirKit PubSub authentication.~~ Done 2026-09-30. The shell's
-   PubSub socket on 127.0.0.1 accepts the first connection; a local process
-   racing the release could send a fake `ready:` URL, and the shell would
-   have opened a window on it with the launch token (a page that looks like
-   the viewer, into which the user might drop a file). Now `ready:` carries
-   a per-launch secret (`NIST_VIEW_READY_SECRET`), compared in constant
-   time, and the URL must be `http://127.0.0.1:<port>`. Verified on the
-   built app (macOS arm64): a script that connected first and sent forged
-   `ready:` messages got nothing back and no window opened. What remains is
-   denial of service: the real server then cannot connect, and the app
-   stays up without a window until it is quit.
-6. ~~Crash reports.~~ Done 2026-09-30. A crash logged the viewer's state
-   at debug level (the first bytes of the file: TCN, agency, date), and at
-   any level the last message (a rendered image arrives as one) and the
-   arguments in the stack trace (the socket, with the file in its assigns).
-   Now `NistView.LogRedaction`, a `Logger` translator, removes state, last
-   message (a LiveView event keeps its name) and stack-trace arguments from
-   GenServer and Task crash reports; the exception and the stack trace stay.
-   `Field` and `ImageRef` leave their contents out of `inspect`, for data
-   inside the exception itself. Left: an exception that carries a raw
-   binary or a plain map from the file (a `MatchError` on a field's value,
-   say) still shows up to the inspect limit.
-7. ~~Client event validation.~~ Done 2026-09-30. The viewer's events parse
-   their integers with `Integer.parse`, check indices against the file,
-   and ignore an event that is malformed, out of range, unknown or sent
-   with no file open.
-8. **Signing and notarization.** macOS builds are signed ad hoc; Developer ID
-   signing and notarization need the certificates (CI secrets are wired in
+1. **Sandbox the helper** (defence in depth). No C parses untrusted data any
+   more, but the helper still runs with the user's privileges and needs only
+   stdin and stdout: a sandbox profile on macOS, seccomp and landlock on
+   Linux, a job object and a restricted token on Windows.
+2. **libjpeg-turbo differential target.** Decided: fuzz the lossless JPEG
+   decoder against libjpeg-turbo 3.2 (development only). Checked by hand on
+   the NBIS fixtures; the target is not written.
+3. **Longer fuzzing.** WSQ and JPEG 2000 have had about two hours each,
+   lossless JPEG and the header readers ten minutes. Run each for hours
+   (`fuzz/overnight.sh`), JPEG 2000 again with the tag-tree fix, and
+   consider continuous runs in CI.
+4. **Lossless JPEG regression inputs.** WSQ has them. The lossless JPEG crash
+   inputs are mutations of real BioCTS prints and would have to be minimised
+   first, against an NBIS build that was removed.
+5. **Signing and notarization.** macOS builds are signed ad hoc; Developer ID
+   signing and notarization need certificates (CI secrets are wired in
    `.github/workflows/desktop.yml`). Windows signing likewise.
-9. **Updater.** None. If added, it must be off in restricted builds.
+6. **Updater.** None. If added, it must be off in restricted builds.
+
+Done on 2026-09-30, with the reasons in [decisions.md](decisions.md): WSQ and
+JPEG 2000 in safe Rust, crash-report redaction, client event validation, and
+the `ready:` secret.

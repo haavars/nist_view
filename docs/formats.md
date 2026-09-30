@@ -82,8 +82,8 @@ IDC. Prüm files use M1.
 WSQ (FBI IAFIS-IC-0110 v3.1) is decoded by our own decoder
 (`native/nist_codecs/src/wsq.rs`). Where the specification and NBIS 5.0.0
 differ, it follows NBIS, because the files in circulation were made for
-NBIS-derived decoders. The details and how this was established are in
-[wsq-port.md](wsq-port.md); what matters when a file does not decode:
+NBIS-derived decoders. How the decoder works and how this was established:
+[wsq.md](wsq.md). What matters when a file does not decode:
 
 - **Layout.** SOI (`FFA0`), then tables and comments in any order (DTT
   `FFA4`, DQT `FFA5`, DHT `FFA6`, COM `FFA8`), the frame header (SOF `FFA2`),
@@ -126,7 +126,7 @@ NBIS-derived decoders. The details and how this was established are in
 
 JP2 files and raw codestreams (`JP2` and `JP2L` records) are decoded by the
 `hayro-jpeg2000` crate with two fixes, and converted to 8 bits by our own code
-(`native/nist_codecs/src/jp2.rs`; [jp2-port.md](jp2-port.md)). What matters
+(`native/nist_codecs/src/jp2.rs`; [jp2.md](jp2.md)). What matters
 when an image looks wrong or does not decode:
 
 - **Lossless images** come out identical to OpenJPEG's decoding. **Lossy
@@ -183,4 +183,4 @@ thumbs).
   record builders. See `test/fixtures/README.md`.
 - `test/samples/biocts/` — NIST BioCTS samples, fetched by `mix nist.samples`
   (gitignored: real people's prints and faces).
-- Prüm `.eml` samples — not available on this machine.
+- Prüm `.eml` samples — restricted, local only, never committed; not yet run.

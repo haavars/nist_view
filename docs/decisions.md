@@ -1,7 +1,7 @@
 # Decision log
 
 Decisions made while building the viewer, newest last. Each says what was
-decided, why, and what it replaced.
+decided, why, and what it replaced. Superseded entries are kept, marked.
 
 ## 2026-09-29
 
@@ -19,12 +19,12 @@ broken file as it can.
 Prüm uses the old `WSQ` label. `NistView.ImageFormat` detects the format
 from the bytes; uncompressed images keep their label.
 
-**NBIS for WSQ, vendored.** WSQ has no maintained alternative. Only the 23
+**NBIS for WSQ, vendored** *(superseded 2026-09-30 by our own decoder)*. WSQ has no maintained alternative. Only the 23
 files the decoder links against are vendored, from NBIS 5.0.0, with
 `__NBISLE__`, a mutex for its globals and silenced `fprintf`. WSQ output is
 bit-identical to NBIS `dwsq` on all 47 distinct BioCTS WSQ images.
 
-**JPEG 2000 through `jpeg2k`/OpenJPEG, own 8-bit conversion.** The crate's
+**JPEG 2000 through `jpeg2k`/OpenJPEG, own 8-bit conversion** *(OpenJPEG superseded 2026-09-30; the conversion stays)*. The crate's
 `get_pixels` rejects sYCC, assumes full-size components and does not clamp.
 Output is bit-identical to `opj_decompress` 2.5.4 on all 12 distinct BioCTS
 JPEG 2000 images.
@@ -81,15 +81,14 @@ stay out of git until minimised.
 the saved fuzz crashes showed that NBIS WSQ still has four memory bugs after
 the M5 patch (the M5 docs wrongly said it was clean). As with lossless JPEG,
 the fix is our own decoder. NBIS moves to a development-only crate for
-differential tests and fuzzing. Details and plan: [wsq-port.md](wsq-port.md).
+differential tests and fuzzing. Details: [wsq.md](wsq.md).
 
 **WSQ arithmetic without FMA.** NBIS's float code gives different pixels
 depending on whether the compiler fuses multiply-adds. It differs on 46 of 48
 sample images, in 0.0007 % of pixels, always by 1. The earlier "bit-identical to
 `dwsq`" check held only for arm64 clang builds. The Rust decoder uses plain
 IEEE operations, so every platform gives the same output. Its reference is
-NBIS built with `-ffp-contract=off`, and the pinned hashes will change
-accordingly.
+NBIS built with `-ffp-contract=off`; the pinned hashes were re-pinned to it.
 
 **Match NBIS's parsing, not a stricter reading of the spec.** NBIS ignores the
 declared lengths of most WSQ segments. Files in the wild are made for
@@ -103,9 +102,7 @@ their glue and the FFI wrapper are now a crate of their own, compiled with
 `-ffp-contract=off` and with two `calloc` patches so its output never depends
 on uninitialised memory. gcc and clang on x86_64 give identical pixels on all
 48 sample images that way, and clang with FMA on x86_64 reproduces the arm64
-output, so the difference is contraction and nothing else. `nist_codecs`
-depends on `nbis_ref` until the Rust decoder replaces it; the WSQ hashes in
-the sample tests were re-pinned to the no-FMA output.
+output, so the difference is contraction and nothing else.
 
 **Rust WSQ decoder: a literal port of the wavelet synthesis.** `join_lets` is
 ported statement by statement, with positions as offsets into the whole
@@ -178,3 +175,36 @@ and left the loop in place for tiled ones, which are slow at ordinary
 shapes. The fix is one early return that builds the same trees, so it is
 carried in our copy next to the reconstruction fix and, like it, not
 reported upstream.
+
+**Crash reports redacted by a Logger translator.** A viewer crash logged
+the file: its first bytes in the process state, a rendered image as the last
+message, the socket with the file among the stack-trace arguments. Custom
+`inspect` for the structs alone would not have covered the raw binary, the
+stream items or the messages, so `NistView.LogRedaction` removes state, last
+message and arguments from GenServer and Task crash reports and hands the
+rest to Elixir's own translator. The exception and stack trace stay, so
+crashes can still be debugged.
+
+**Client events are validated and otherwise ignored.** The LiveView parsed
+integers from the browser with `String.to_integer` and crashed on anything
+else. Events now check their parameters against the open file, and a last
+catch-all clause ignores unknown events, since the webview is not trusted.
+
+**`ready:` carries a secret from the shell.** ElixirKit's PubSub socket
+accepts the first local connection, so a process racing the release could
+have sent its own URL, and the shell would have opened a window there with
+the launch token. A second per-launch secret, separate from the launch token
+(which appears in URLs), is passed in the environment like the token. What
+remains is denial of service, which a local attacker has anyway.
+
+**Viewer layout: nothing over the image.** Toolbars moved into strips above
+and below the image; the record list and fields panel are resizable. Panel
+sizes are not stored: browser storage is written to disk, which the viewer
+promises not to do, and the random port gives each launch a new origin
+anyway. For the same reason there is no "copy value" button: the clipboard
+is another program.
+
+**Implementation logs condensed into reference docs.** The WSQ and JPEG 2000
+port plans, the JPEG 2000 evaluation and the milestone logs in `plan.md` were
+replaced by [wsq.md](wsq.md), [jp2.md](jp2.md) and a short status in
+[plan.md](plan.md). The history is in git.

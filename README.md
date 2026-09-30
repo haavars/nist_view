@@ -38,9 +38,10 @@ re-signed: `codesign --force --sign - _build/tailwind-macos-arm64-*`.
 
 ## Documentation
 
-- [`docs/plan.md`](docs/plan.md): goals, milestones and their status
+- [`docs/plan.md`](docs/plan.md): goals, status and what's next
 - [`docs/architecture.md`](docs/architecture.md): how it is built
 - [`docs/formats.md`](docs/formats.md): the ANSI/NIST-ITL format as implemented, with its quirks
+- [`docs/wsq.md`](docs/wsq.md), [`docs/jp2.md`](docs/jp2.md): the WSQ and JPEG 2000 decoders
 - [`docs/security.md`](docs/security.md): data handling, fuzzing results, open items
 - [`docs/fuzzing.md`](docs/fuzzing.md): how to fuzz the decoders
 - [`docs/decisions.md`](docs/decisions.md): decision log

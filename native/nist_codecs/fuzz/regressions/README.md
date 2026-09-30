@@ -13,7 +13,7 @@ the rest; what remains is markers, lengths and table bytes.
 
 Each of these crashes NBIS's WSQ decoder (`native/nbis_ref`, the `nbis_wsq`
 fuzz target, with AddressSanitizer). The Rust decoder returns an error.
-Root causes are in `docs/wsq-port.md`.
+Root causes are in `docs/wsq.md`.
 
 | File | In NBIS | From |
 |---|---|---|

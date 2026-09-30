@@ -19,7 +19,7 @@ fn main() {
 
     // No fused multiply-add: NBIS's float code then rounds every operation
     // as the C source states it, and gives the same pixels on every platform
-    // and compiler (docs/wsq-port.md).
+    // and compiler (docs/wsq.md).
     build.flag(if msvc { "/fp:precise" } else { "-ffp-contract=off" });
 
     // NBIS reads big-endian stream markers through byte-swapping helpers

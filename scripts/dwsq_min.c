@@ -1,5 +1,5 @@
 /*
- * Minimal NBIS WSQ decoder driver for comparing builds (docs/wsq-port.md).
+ * Minimal NBIS WSQ decoder driver for comparing builds (docs/wsq.md).
  * Decodes each file given and prints OK or ERR for it. With $TAG set, it
  * also writes the pixels to <file>.<$TAG>.raw.
  *

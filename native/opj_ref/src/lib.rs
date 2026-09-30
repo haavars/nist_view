@@ -3,7 +3,7 @@
 //! decoder.
 //!
 //! This is the reference the Rust decoder (`nist_codecs::jp2`) is compared
-//! against in tests (docs/jp2-port.md). It is C on untrusted input: never
+//! against in tests (docs/jp2.md). It is C on untrusted input: never
 //! ship it.
 
 use jpeg2k::{ColorSpace as J2kColorSpace, ImageComponent};
