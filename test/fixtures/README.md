@@ -13,5 +13,6 @@ gitignored `test/samples/` (see `mix nist.samples`).
 | `synthetic_grey.jp2` | The ridge pattern as lossless JPEG 2000 (OpenJPEG `opj_compress`), JP2 file. |
 | `synthetic_rgb.j2k` | The RGB pattern as lossless JPEG 2000, raw codestream. |
 | `synthetic_grey16.jp2` | 16-bit greyscale `(512x + 7y) mod 65536`, lossless JPEG 2000. |
+| `jp2/` | 32 JPEG 2000 files of about 131 × 97, made by `scripts/make_jp2_fixtures.sh` from the ridge pattern with added texture: lossless and lossy; 8, 12 and 16 bit; signed; subsampled chroma; tiles; progression orders; code-block styles. `native/opj_ref/tests/compare.rs` decodes each with our decoder and with OpenJPEG. |
 
 `scripts/synthetic_images.py` writes the source patterns and lists the encoder commands.

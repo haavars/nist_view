@@ -140,3 +140,32 @@ the column pass, and a whole line per filter coefficient for the row pass.
 No sample's operations change or change order, so the output stays identical
 to NBIS, which the differential test confirms. The decoder went from 14 to 70
 megapixels per second; NBIS does 23.
+
+**JPEG 2000 with `hayro-jpeg2000` instead of OpenJPEG.** OpenJPEG was the
+last C that parsed untrusted data. The alternatives were a sandbox for the
+helper on three operating systems, or our own decoder, which for JPEG 2000
+is far more work than WSQ was. The crate is written from scratch in safe
+Rust. Evaluation showed it identical to OpenJPEG on lossless images and
+0.6 to 2.1 dB worse on lossy ones, because it reconstructed coefficients at
+the low end of their interval; with that fixed it is within 1 of OpenJPEG in
+a fraction of a percent of samples, as ffmpeg's decoder is.
+
+**The crate is a patched copy in the repository.** The fix is not in any
+release. A path dependency keeps builds offline and the change visible;
+`PATCHES.md` says how to drop the copy once a release has the fix. It is
+not reported upstream: the viewer is a proof of concept for now.
+
+**Built without SIMD and without the crate's `std` feature.** SIMD brings in
+`unsafe` and gained nothing in our measurement. The `std` feature makes the
+crate use fused multiply-add on arm64 but not on x86_64, the problem WSQ
+had; without it the arithmetic is the same everywhere.
+
+**"The same as OpenJPEG" is exact only for lossless.** For WSQ the port
+reproduced the reference's arithmetic and could be bit-exact. Two independent
+JPEG 2000 decoders differ in the last bit on lossy images, so the test
+allows 1 per sample in at most 0.5 % of samples; lossless must be identical.
+
+**A memory limit besides the pixel limit.** The crate works in `f32` and
+holds every component's coefficients and samples at once: 13 bytes per pixel
+for greyscale, 30 for RGB, about double OpenJPEG. A decode is refused when
+its estimate passes 2 GiB.

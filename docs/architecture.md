@@ -21,8 +21,8 @@ fuzzing in [`fuzzing.md`](fuzzing.md); the decision log in
 │  NistView.Codecs NIF: PNG encoding, YCbCr→RGB (safe Rust, no C)          │
 └───────┬─────────────────────────────────────────────────────────────────┘
         │ one short-lived process per image, {:packet, 4} over stdio
-┌───────▼─────── nist_decode helper (Rust + C) ───────────────────────────┐
-│  WSQ (Rust) · lossless JPEG (Rust) · JPEG 2000 (OpenJPEG C)              │
+┌───────▼─────── nist_decode helper (Rust) ───────────────────────────────┐
+│  WSQ · lossless JPEG · JPEG 2000: all safe Rust, no C                    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,6 +52,8 @@ launch token is required and `/?path=…` opens a local file.
 | `lib/mix/tasks/` | `nist.dump`, `nist.samples`, `compile.nist_decode` |
 | `native/nist_codecs/` | Rust library: decoders, header readers, PNG; NIF behind the `nif` feature |
 | `native/nbis_ref/` | Vendored, patched NBIS WSQ sources and their Rust wrapper: the reference the Rust WSQ decoder is tested against. Development only; nothing shipped links it |
+| `native/hayro-jpeg2000/` | The JPEG 2000 decoder: a copy of the `hayro-jpeg2000` crate with one fix (`PATCHES.md`) |
+| `native/opj_ref/` | OpenJPEG (C) through `jpeg2k`: the reference the JPEG 2000 decoder is tested against. Development only; nothing shipped links it |
 | `native/nist_codecs/fuzz/` | cargo-fuzz targets and scripts |
 | `native/nist_decode/` | The helper executable |
 | `src-tauri/` | The desktop shell |
@@ -90,7 +92,7 @@ webview:
 |---|---|
 | PNG, baseline JPEG | Passed through unchanged; the webview decodes them |
 | WSQ | `nist_decode` (`nist_codecs::wsq`, safe Rust) → PNG (NIF) |
-| JPEG 2000 (JP2, J2K) | `nist_decode` (OpenJPEG via `jpeg2k`, own 8-bit conversion) → PNG |
+| JPEG 2000 (JP2, J2K) | `nist_decode` (`nist_codecs::jp2`: the `hayro-jpeg2000` crate, safe Rust, with our own 8-bit conversion) → PNG |
 | Lossless JPEG | `nist_decode` (`nist_codecs::jpegl`, safe Rust) → PNG |
 | Uncompressed | 8-bit grey or RGB → PNG |
 

@@ -1,9 +1,8 @@
-//! Decodes images for NistView in a process of its own, so that a memory
-//! error in the C decoder (OpenJPEG, for JPEG 2000) on a hostile file can
-//! only take down this process, never the BEAM. See `NistView.Decoder`. WSQ
-//! and lossless JPEG are decoded in safe Rust (`nist_codecs::wsq`,
-//! `nist_codecs::jpegl`); for them the process contains a panic, an
-//! allocation failure or a decode that takes too long.
+//! Decodes images for NistView in a process of its own. The decoders are
+//! safe Rust (`nist_codecs::wsq`, `jpegl` and `jp2`), so a hostile file
+//! cannot corrupt memory, but it can make one panic, run out of memory or
+//! take too long. Here that ends this process and not the BEAM. See
+//! `NistView.Decoder`.
 //!
 //! The protocol is Erlang's `{:packet, 4}` on stdin and stdout: every
 //! message is a 4-byte big-endian length followed by that many bytes.

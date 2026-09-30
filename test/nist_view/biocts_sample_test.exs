@@ -153,17 +153,23 @@ defmodule NistView.BioctsSampleTest do
     end
   end
 
-  # SHA-256 of OpenJPEG 2.5.4 `opj_decompress` output. All 12 distinct
-  # JPEG 2000 images in the set were compared bit for bit on 2026-09-29.
-  @opj_sha256 [
+  # The first two are lossless images, and their hashes are those of
+  # OpenJPEG 2.5.4 `opj_decompress` output: a lossless image has one correct
+  # decoding. The third is lossy. Its hash is our decoder's own output, which
+  # is within 1 of OpenJPEG's in 0.02 % of samples
+  # (native/opj_ref/tests/compare.rs compares all 12 distinct images); it is
+  # pinned to show that every platform computes the same pixels.
+  @jp2_sha256 [
     {"pass-type-15-palms.an2", 2,
      "4454c09c35143902ef9958e61af8b5657a099a95ee37ff679fdccac984c7597c"},
     {"pass-type-10-scar-face-sap50-addedRequiredInfoItems.an2", 2,
-     "ca4359ab687106d696a1a635531b3ecb2611e87bb47bb37d1d42c8b4d0f1d7fc"}
+     "ca4359ab687106d696a1a635531b3ecb2611e87bb47bb37d1d42c8b4d0f1d7fc"},
+    {"pass-type-10-Ncic-2007-unique-addedRequiredInfoItems.an2", 3,
+     "edc442451e2588b251317da6332fa0bca64c1fa9b0034a8944f06cf95bb711eb"}
   ]
 
-  test "JPEG 2000 decoding is bit-identical to OpenJPEG opj_decompress" do
-    for {name, idc, sha} <- @opj_sha256 do
+  test "JPEG 2000 decoding gives the pinned pixels" do
+    for {name, idc, sha} <- @jp2_sha256 do
       record =
         name
         |> parse!()

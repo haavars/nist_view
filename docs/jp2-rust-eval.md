@@ -1,9 +1,9 @@
 # JPEG 2000 in safe Rust: evaluation of `hayro-jpeg2000`
 
-Status 2026-09-30: **evaluated, not adopted.** No code in the application has
-changed. This is the evidence for the choice described in
-[security.md](security.md#open-items): replace OpenJPEG, the last C that
-parses untrusted data, or sandbox the helper.
+Status 2026-09-30: **evaluated; option A was then chosen and carried out**
+([jp2-port.md](jp2-port.md)). This is the evidence for that choice: replace
+OpenJPEG, the last C that parsed untrusted data, or sandbox the helper. It
+describes the state before the change.
 
 ## Result in short
 

@@ -12,5 +12,5 @@ path = "src/main.rs"
 nist_codecs = { path = "../nist_codecs", default-features = false }
 
 [profile.release]
-# A bug in a C decoder should end this process, not continue on corrupted state.
+# A panic in a decoder ends this process at once; NistView.Decoder reports it.
 panic = "abort"

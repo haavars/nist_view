@@ -2,8 +2,9 @@
 
 `native/nist_codecs/fuzz` is a cargo-fuzz crate. The targets call the decoders
 directly (the `nist_codecs` library with its `nif` feature off), and the run
-script instruments the C code (OpenJPEG) with AddressSanitizer too, so
-memory errors in C are caught where they happen, not only when they crash.
+script builds with AddressSanitizer. The decoders are all Rust; the C that
+two of the targets link is the WSQ reference decoder (NBIS), and it is
+instrumented too, so its memory errors are caught where they happen.
 
 ## Targets
 
@@ -13,7 +14,7 @@ memory errors in C are caught where they happen, not only when they crash.
 | `wsq_diff` | `wsq::decode_strict` against NBIS (`native/nbis_ref`, C with ASan): whatever the Rust decoder accepts, NBIS must decode to the same pixels, size and PPI without a memory error. NBIS is not run on what the Rust decoder rejects |
 | `nbis_wsq` | NBIS's WSQ decoder alone. Not shipped; this target reproduces and minimises the inputs that crash it (`fuzz/regressions/wsq`) |
 | `jpegl` | `jpegl::decode` (safe Rust) |
-| `jp2` | `jp2::decode` (OpenJPEG C via `jpeg2k`, own 8-bit conversion) |
+| `jp2` | `jp2::decode` (the `hayro-jpeg2000` crate, safe Rust, with our own 8-bit conversion) |
 | `headers` | `headers::{jpeg, jp2}` (Rust header readers) |
 
 ## Setup (once)

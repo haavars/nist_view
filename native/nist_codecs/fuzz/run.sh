@@ -1,6 +1,7 @@
 #!/bin/sh
-# Fuzzes one decoder with AddressSanitizer in both the Rust and the C code
-# (OpenJPEG). Needs nightly Rust, cargo-fuzz and an LLVM clang with
+# Fuzzes one decoder with AddressSanitizer. The decoders are Rust; the
+# reference decoder that wsq_diff and nbis_wsq link (NBIS) is C and is
+# instrumented too. Needs nightly Rust, cargo-fuzz and an LLVM clang with
 # libFuzzer (Homebrew `llvm` on macOS).
 #
 #   fuzz/run.sh wsq 600      # target, seconds
