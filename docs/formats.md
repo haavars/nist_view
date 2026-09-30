@@ -55,7 +55,8 @@ signature by chance. BioCTS has four mislabelled images:
 | File | Label | Actually |
 |---|---|---|
 | `pass-type-10-14-17-piv-index-iris-replacedCorruptImages_fixedAspectRatio.an2` (2 × Type-14) | `JPEGL` | baseline JPEG (written by Paint.NET) |
-| `fail-all-supported-types-L2.an2` (2 records) | `JPEGB` | WSQ |
+| `fail-all-supported-types-L2.an2` (a Type-15) | `JPEGB` | WSQ |
+| `fail-type-4-L2.an2` (a Type-4) | GCA 2 (`JPEGB`) | WSQ |
 
 ## Minutiae (Type-9)
 
@@ -75,6 +76,51 @@ within 1 px and 1° after normalisation:
 The EFS angle convention is not verified against an independent file: no
 available file has EFS minutiae. The overlay matches Type-9 to an image by
 IDC. Prüm files use M1.
+
+## WSQ as decoded
+
+WSQ (FBI IAFIS-IC-0110 v3.1) is decoded by our own decoder
+(`native/nist_codecs/src/wsq.rs`). Where the specification and NBIS 5.0.0
+differ, it follows NBIS, because the files in circulation were made for
+NBIS-derived decoders. The details and how this was established are in
+[wsq-port.md](wsq-port.md); what matters when a file does not decode:
+
+- **Layout.** SOI (`FFA0`), then tables and comments in any order (DTT
+  `FFA4`, DQT `FFA5`, DHT `FFA6`, COM `FFA8`), the frame header (SOF `FFA2`),
+  then blocks (SOB `FFA3`), each of which may be preceded by more tables, and
+  EOI (`FFA1`). All 48 distinct BioCTS images have one comment, the 9 and 7
+  tap filter pair, two Huffman table segments and three blocks.
+- **Segment lengths.** The length fields of the frame header, the transform
+  and quantisation tables and the block headers are not used for decoding.
+  They must still be right before the first block, because the resolution is
+  found by a scan that skips segments by length.
+- **Resolution.** From the first comment before the first block whose text
+  starts with `NIST_COM`: the last `PPI` entry, if it is a positive number.
+  Without such a comment, or without `PPI` in it, the image has no
+  resolution of its own. (The viewer shows the resolution from the record's
+  fields in any case; the decoder reports the image's own beside it.)
+- **Markers in the coded data.** A marker ends a block only at a byte
+  boundary where a new code starts. `FF` fill bytes before it are accepted
+  (NBIS rejects them). `FF` followed by anything but `00` elsewhere is an
+  error.
+- **Short streams.** A block may end early, and an image may have fewer than
+  three blocks: the missing coefficients are zero. Comments may follow the
+  third block.
+- **Filters.** Any lengths from 1 to 32, odd or even; a lowpass length of 1
+  is an error. The specification allows 31 and 32, NBIS up to 255.
+- **Sizes.** At least 33 pixels in each direction with the standard filters:
+  below that NBIS reads outside its buffers, so there is no reference output,
+  and the decoder returns an error. At most 100 megapixels, and no subband
+  may start beyond 32,767 pixels (NBIS keeps positions in 16 bits).
+- **Huffman tables.** Ids 0 to 7; a table used by a block may have at most
+  256 codes. A segment's first table may replace an earlier one, its later
+  tables may not.
+- **Restart intervals** (DRI `FFA7`) are an error, as in NBIS. The
+  specification defines them; no encoder we know of writes them.
+- **Pixels.** Identical to NBIS built without fused multiply-add, on every
+  platform. An NBIS build that fuses (clang's default on arm64) differs by 1
+  in about 7 of a million pixels, which is within the specification's
+  tolerance for decoders (99.9 % of pixels equal, none off by more than 1).
 
 ## Lossless JPEG quirks (NBIS encoder)
 
