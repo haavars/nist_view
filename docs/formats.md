@@ -125,7 +125,7 @@ NBIS-derived decoders. The details and how this was established are in
 ## JPEG 2000 as decoded
 
 JP2 files and raw codestreams (`JP2` and `JP2L` records) are decoded by the
-`hayro-jpeg2000` crate with one fix, and converted to 8 bits by our own code
+`hayro-jpeg2000` crate with two fixes, and converted to 8 bits by our own code
 (`native/nist_codecs/src/jp2.rs`; [jp2-port.md](jp2-port.md)). What matters
 when an image looks wrong or does not decode:
 
@@ -140,8 +140,9 @@ when an image looks wrong or does not decode:
   colour space field decides. CMYK is refused.
 - **More than 8 bits** are scaled down to 8 (`v · 255 / max`, rounded
   down). Signed samples are shifted to unsigned.
-- **Sizes.** At most 100 megapixels, and at most 2 GiB of estimated decoder
-  memory, which a colour image passes at about 67 megapixels.
+- **Sizes.** At most 100 megapixels, at most 60,000 pixels a side (the
+  crate's limit), and at most 2 GiB of estimated decoder memory, which a
+  colour image passes at about 67 megapixels.
 - **Damaged files.** The decoder is lenient: it shows what it could decode
   of a truncated or damaged stream where a stricter one would give an error.
 - **Not supported:** a region of interest that covers only part of an image

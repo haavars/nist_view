@@ -162,8 +162,10 @@ under cargo-fuzz described above.
 x86_64 Linux, the `jp2` target with 20 processes, stopped by hand: 2,037,781
 inputs, no crash, no out-of-memory, and coverage still rising. It saved 18
 slow inputs (12 timeouts, 6 slow units), all small files that declare very
-long and thin images; they take 1 to 9 seconds in a normal build. Not yet
-investigated: [`jp2-port.md`](jp2-port.md#slow-inputs).
+long and thin images; they took 1 to 8 seconds in a normal build. The cause
+was a tag-tree loop in the crate whose time grew with the square of a
+precinct's longer side; fixed in our copy, they now take about 0.1 seconds
+([`jp2-port.md`](jp2-port.md#slow-inputs)).
 
 A temporary differential target compared the Rust lossless JPEG decoder with
 NBIS: wherever NBIS decoded an image, ours had to produce the same pixels.
@@ -177,7 +179,8 @@ honour. The target was removed with the NBIS decoder.
   build libjpeg-turbo with ASan, link it only into the fuzz crate, correct
   NBIS's table class before handing it the bytes, request no colour
   conversion, and assert identical pixels.
-- Longer runs (hours per target) for `jpegl`, `jp2` and `headers`, and a
-  scheduled CI job. The WSQ targets have not been run on arm64.
+- Longer runs (hours per target) for `jpegl`, `jp2` (again, with the
+  tag-tree fix) and `headers`, and a scheduled CI job: `overnight.sh`. The
+  WSQ targets have not been run on arm64.
 - Regression inputs for lossless JPEG in `fuzz/regressions/jpegl/` (WSQ has
   them); see [`security.md`](security.md#open-items).

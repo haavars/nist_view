@@ -71,7 +71,7 @@ Ten-minute campaigns per decoder with AddressSanitizer on the C code
 | Rust lossless JPEG (new) | 0 crashes in 4.8 million inputs | — |
 | Rust WSQ (new, 2026-09-30) | 115 minutes: 0 crashes, timeouts or out-of-memory in 1.5 million inputs. Against NBIS (`wsq_diff`, 115 minutes, 287,000 inputs): no difference in pixels, size or PPI, and no memory error in NBIS on anything the Rust decoder accepts | One finding in the first ten minutes, before the long run: decoding time follows the size a file declares (see Controls). NBIS: seven memory bugs in all; the six that are not patched in the reference each have a regression input |
 | OpenJPEG (JPEG 2000) | 0 crashes | Replaced on 2026-09-30 by a safe-Rust decoder, to have no C on untrusted input |
-| Rust JPEG 2000 (new, 2026-09-30) | 110 minutes, 2.0 million inputs: 0 crashes, 0 out-of-memory. 18 slow inputs: small files declaring very long, thin images take 1 to 9 seconds in a normal build | Slow inputs not yet investigated ([`jp2-port.md`](jp2-port.md#slow-inputs)); the helper's 60 s limit contains them |
+| Rust JPEG 2000 (new, 2026-09-30) | 110 minutes, 2.0 million inputs: 0 crashes, 0 out-of-memory. 18 slow inputs: small files declaring very long, thin images took 1 to 8 seconds in a normal build | Cause: building the crate's tag trees took time in the square of a precinct's longer side; with thin tiles a valid 171 KB file took 23 s. Fixed in our copy of the crate; the 18 now take about 0.1 s ([`jp2-port.md`](jp2-port.md#slow-inputs)) |
 | Header readers (Rust) | 0 crashes in 25 million inputs | — |
 
 Decision (the plan's M5 question): **decode out of process.** The WSQ bug
@@ -101,9 +101,11 @@ than crash.
    differentially against libjpeg-turbo 3.2 (dev-only, not shipped).
    Verified by hand that it decodes the NBIS fixtures identically; the fuzz
    target is not written yet.
-3. **Longer fuzzing.** WSQ has had two hours per target; lossless JPEG,
-   JPEG 2000 and the header readers only ten minutes, which is a smoke test.
-   Run each for hours, and consider OSS-Fuzz-style continuous runs in CI.
+3. **Longer fuzzing.** WSQ has had two hours per target and JPEG 2000 just
+   under two; lossless JPEG and the header readers only ten minutes, which
+   is a smoke test. Run each for hours (`fuzz/overnight.sh`), JPEG 2000 again
+   now that its slow inputs are fixed, and consider OSS-Fuzz-style
+   continuous runs in CI.
 4. **Regression inputs.** Done for WSQ: six inputs, one per NBIS bug, in
    `native/nist_codecs/fuzz/regressions/wsq/`, which `NistView.DecoderTest`
    runs. Not done for lossless JPEG: those crash inputs are mutations of

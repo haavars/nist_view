@@ -169,3 +169,12 @@ allows 1 per sample in at most 0.5 % of samples; lossless must be identical.
 holds every component's coefficients and samples at once: 13 bytes per pixel
 for greyscale, 30 for RGB, about double OpenJPEG. A decode is refused when
 its estimate passes 2 GiB.
+
+**Slow JPEG 2000 inputs fixed in the crate, not guarded against.** The
+fuzzer's slow inputs were long, thin images; the crate built its tag trees
+in time that grew with the square of a precinct's longer side. A guard in
+`jp2.rs` (refusing extreme aspect ratios) would have refused valid images
+and left the loop in place for tiled ones, which are slow at ordinary
+shapes. The fix is one early return that builds the same trees, so it is
+carried in our copy next to the reconstruction fix and, like it, not
+reported upstream.

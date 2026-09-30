@@ -108,6 +108,7 @@ defmodule NistView.MixProject do
         "format",
         "test",
         "cmd --cd native/nist_codecs cargo test --release --quiet",
+        "cmd --cd native/hayro-jpeg2000 cargo test --release --no-default-features --quiet",
         "cmd --cd native/nbis_ref cargo test --release --quiet",
         "cmd --cd native/opj_ref cargo test --release --quiet"
       ]
