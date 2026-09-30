@@ -233,7 +233,7 @@ defmodule NistViewWeb.ViewerLive do
     do: %{status: :error, error: Viewer.describe(reason)}
 
   defp render_result({:exit, reason}),
-    do: %{status: :error, error: "decoder crashed: #{inspect(reason)}"}
+    do: %{status: :error, error: "Rendering stopped: #{Viewer.describe_exit(reason)}"}
 
   # -- Hex ---------------------------------------------------------------------
 

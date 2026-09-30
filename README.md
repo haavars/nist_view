@@ -17,6 +17,11 @@ mix phx.server
 Open <http://localhost:4000> and drop a file, or open a local file with
 `http://localhost:4000/?path=/full/path/file.an2` (development only).
 
+After a change under `native/nist_codecs`, restart `mix phx.server`. The
+code reloader recompiles the NIF but cannot load it again into a running VM,
+so PNG encoding (every WSQ, JPEG 2000 and lossless JPEG image) fails with
+`undef` until the restart. Releases never reload code.
+
 ## Desktop app (Tauri)
 
 Needs the Tauri CLI: `cargo install tauri-cli --version "^2.11" --locked`.
