@@ -179,7 +179,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ on x86_64 ([jp2-port.md](jp2-port.md)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ on branch `jp2-rust-eval`, not merged ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -276,7 +276,6 @@ Details, fuzzing results and open items: [security.md](security.md).
   - the libjpeg-turbo differential fuzz target
   - longer fuzz runs for lossless JPEG and JPEG 2000 (WSQ has had two hours per target)
   - minimised regression inputs for lossless JPEG (WSQ has them)
-  - JPEG 2000 in safe Rust: done on x86_64 ([jp2-port.md](jp2-port.md)); still to do: arm64
   - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`
   - redacted crash reports

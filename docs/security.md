@@ -71,7 +71,7 @@ Ten-minute campaigns per decoder with AddressSanitizer on the C code
 | Rust lossless JPEG (new) | 0 crashes in 4.8 million inputs | — |
 | Rust WSQ (new, 2026-09-30) | 115 minutes: 0 crashes, timeouts or out-of-memory in 1.5 million inputs. Against NBIS (`wsq_diff`, 115 minutes, 287,000 inputs): no difference in pixels, size or PPI, and no memory error in NBIS on anything the Rust decoder accepts | One finding in the first ten minutes, before the long run: decoding time follows the size a file declares (see Controls). NBIS: seven memory bugs in all; the six that are not patched in the reference each have a regression input |
 | OpenJPEG (JPEG 2000) | 0 crashes | Replaced on 2026-09-30 by a safe-Rust decoder, to have no C on untrusted input |
-| Rust JPEG 2000 (new, 2026-09-30) | Two minutes, 64,000 inputs: 0 crashes. A two-hour run is in progress | — |
+| Rust JPEG 2000 (new, 2026-09-30) | 110 minutes, 2.0 million inputs: 0 crashes, 0 out-of-memory. 18 slow inputs: small files declaring very long, thin images take 1 to 9 seconds in a normal build | Slow inputs not yet investigated ([`jp2-port.md`](jp2-port.md#slow-inputs)); the helper's 60 s limit contains them |
 | Header readers (Rust) | 0 crashes in 25 million inputs | — |
 
 Decision (the plan's M5 question): **decode out of process.** The WSQ bug
@@ -93,8 +93,8 @@ than crash.
    stdout, so dropping the rest remains worth doing, at lower priority: a
    sandbox profile on macOS, seccomp and landlock on Linux, a job object and
    a restricted token on Windows.
-   - Still open from the JPEG 2000 change: the decoder has not run on
-     arm64. The fix it needs is carried in our copy of the crate
+   - The JPEG 2000 decoder gives the same pixels on x86_64 and arm64. The
+     fix it needs is carried in our copy of the crate
      (`native/hayro-jpeg2000/PATCHES.md`) and is deliberately not reported
      upstream while this is a proof of concept.
 2. **libjpeg-turbo as reference.** Decided: fuzz our lossless JPEG decoder

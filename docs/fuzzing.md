@@ -70,6 +70,59 @@ native/nist_codecs/fuzz/minimise.py nbis_wsq crash-<hash> out.wsq   # shrink, sa
   any crash, and every input ends up as the same six bytes (a comment of
   length 0, which makes `calloc` fail under ASan).
 
+## Overnight runs
+
+`overnight.sh` fuzzes several targets side by side for hours and writes what
+it found to disk, so it can be started in the evening and read the next day
+(or in a later session).
+
+```sh
+# Once per machine: see Setup. On Linux without root:
+export LLVM_PREFIX=~/anaconda3/envs/nist-llvm
+
+mix run native/nist_codecs/fuzz/seed.exs      # only if fuzz/corpus is empty
+native/nist_codecs/fuzz/overnight.sh          # 8 hours: jp2, wsq, wsq_diff, jpegl
+native/nist_codecs/fuzz/overnight.sh 10 jp2   # or: hours, then targets
+```
+
+It stays in the terminal and prints one line per target every minute:
+
+```
+23:41  1:12 of 8 hours
+  jp2          1654999 inputs   coverage 6513   corpus 2281   out of memory/timeout/crash 0/5/0    files saved 6
+  wsq           798743 inputs   coverage 1380   corpus 492    out of memory/timeout/crash 0/0/0    files saved 0
+```
+
+- **Ctrl-C stops it**: the fuzzers are interrupted and the summary is still
+  written, marked as stopped early. Closing the terminal does the same.
+- `--detach` as the first argument runs it in the background instead, where
+  it survives the terminal; it prints the `kill` command that stops it and
+  the log to follow.
+- The cores are shared out between the targets, two left free.
+
+The run gets a directory of its own,
+`native/nist_codecs/fuzz/results/<date>_<time>/` (gitignored):
+
+| File | What |
+|---|---|
+| `status` | `running`, then `finished` or `stopped` |
+| `summary.md` | Written when the run ends, and printed. Per target: inputs tried, coverage, corpus size, the counts of out-of-memory, timeout and crash, and the files the fuzzer saved during this run; for crashes, their kind and first decoder function |
+| `<target>.log` | libFuzzer's own output |
+
+- Saved inputs are in `fuzz/artifacts/<target>/`, as with `run.sh`. Keep
+  them: they are what a later look needs.
+- The corpus in `fuzz/corpus/<target>/` grows and is reused, so a second
+  night continues from the first.
+- Coverage still rising at the end of a run (compare the figure an hour
+  apart) means a longer run would reach more code.
+
+What to do with the result: a **crash** in a Rust decoder is a panic and a
+bug to fix; minimise it with `minimise.py` and add it to
+`fuzz/regressions/`. A crash in `wsq_diff` is a disagreement with NBIS or a
+memory error in NBIS on input our decoder accepts, both worth a look. A
+**timeout** is an input that takes long, contained in the application by the
+helper's time limit; worth a look when a small file costs many seconds.
+
 To reproduce one crash with a full report:
 
 ```sh
@@ -103,6 +156,14 @@ decodes cleanly and the Rust decoder rejects. It did show a sixth NBIS bug, a
 An earlier ten-minute run, with the full 100-megapixel limit, reported one
 timeout: a 12 KB file declaring 17 megapixels. That led to the lower limit
 under cargo-fuzz described above.
+
+## Results for the Rust JPEG 2000 decoder (2026-09-30, 110 minutes)
+
+x86_64 Linux, the `jp2` target with 20 processes, stopped by hand: 2,037,781
+inputs, no crash, no out-of-memory, and coverage still rising. It saved 18
+slow inputs (12 timeouts, 6 slow units), all small files that declare very
+long and thin images; they take 1 to 9 seconds in a normal build. Not yet
+investigated: [`jp2-port.md`](jp2-port.md#slow-inputs).
 
 A temporary differential target compared the Rust lossless JPEG decoder with
 NBIS: wherever NBIS decoded an image, ours had to produce the same pixels.
