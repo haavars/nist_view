@@ -275,7 +275,6 @@ Details, fuzzing results and open items: [security.md](security.md).
 - **Security review:** the controls in place are documented and checked on the built release.
 - **Still to do** (see [security.md](security.md#open-items)):
   - the libjpeg-turbo differential fuzz target
-  - longer fuzz runs for lossless JPEG, and JPEG 2000 again with the tag-tree fix (WSQ has had two hours per target)
   - minimised regression inputs for lossless JPEG (WSQ has them)
   - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`

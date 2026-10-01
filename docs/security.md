@@ -101,11 +101,11 @@ than crash.
    differentially against libjpeg-turbo 3.2 (dev-only, not shipped).
    Verified by hand that it decodes the NBIS fixtures identically; the fuzz
    target is not written yet.
-3. **Longer fuzzing.** WSQ has had two hours per target and JPEG 2000 just
-   under two; lossless JPEG and the header readers only ten minutes, which
-   is a smoke test. Run each for hours (`fuzz/overnight.sh`), JPEG 2000 again
-   now that its slow inputs are fixed, and consider OSS-Fuzz-style
-   continuous runs in CI.
+3. **Longer fuzzing: not needed** (2026-10-01). The viewer runs airgapped
+   on known data, so crafted input is not a realistic threat. WSQ and
+   JPEG 2000 have had about two hours each, lossless JPEG 4.8 million
+   inputs; the 18 slow JPEG 2000 inputs take about a second each with the
+   fix. `fuzz/overnight.sh` stays for a run after a decoder change.
 4. **Regression inputs.** Done for WSQ: six inputs, one per NBIS bug, in
    `native/nist_codecs/fuzz/regressions/wsq/`, which `NistView.DecoderTest`
    runs. Not done for lossless JPEG: those crash inputs are mutations of
