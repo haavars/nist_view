@@ -153,4 +153,42 @@ defmodule NistViewWeb.ViewerLiveTest do
     assert has_element?(view, "#drop-zone")
     refute has_element?(view, "#records-0")
   end
+
+  test "ignores malformed or out-of-range event values", %{conn: conn} do
+    view = open(conn, @phantom)
+
+    for {event, params} <- [
+          {"select", %{"index" => "x"}},
+          {"select", %{"index" => "999"}},
+          {"select", %{"index" => "-1"}},
+          {"select", %{}},
+          {"hex_field", %{"number" => "1e3"}},
+          {"hex_field", %{"number" => "50"}},
+          {"hex_page", %{"page" => "next"}},
+          {"tab", %{"tab" => "other"}},
+          {"view", %{"view" => "other"}},
+          {"unknown", %{}}
+        ] do
+      render_hook(view, event, params)
+    end
+
+    assert has_element?(view, "#records-2[aria-current=true]")
+    assert has_element?(view, "#fields-panel:not(.hidden)")
+  end
+
+  test "ignores record events before a file is open", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    for {event, params} <- [
+          {"select", %{"index" => "0"}},
+          {"key", %{"key" => "ArrowDown"}},
+          {"hex_field", %{"number" => "1"}},
+          {"hex_record", %{}},
+          {"hex_page", %{"page" => "1"}}
+        ] do
+      render_hook(view, event, params)
+    end
+
+    assert has_element?(view, "#drop-zone")
+  end
 end
