@@ -14,6 +14,10 @@ and what is still open.
 Out of scope: an attacker who already runs code as the same user, and
 network attackers (the viewer makes no network connections).
 
+The viewer runs airgapped, on known data (2026-10-01), so hostile files are
+an unlikely threat; the controls against them stay, but further work on them
+has low priority.
+
 ## Controls in place
 
 ### Hostile files
@@ -91,18 +95,17 @@ memory error could corrupt state silently rather than crash.
 2. **libjpeg-turbo differential target.** Decided: fuzz the lossless JPEG
    decoder against libjpeg-turbo 3.2 (development only). Checked by hand on
    the NBIS fixtures; the target is not written.
-3. **Longer fuzzing.** WSQ and JPEG 2000 have had about two hours each,
-   lossless JPEG and the header readers ten minutes. Run each for hours
-   (`fuzz/overnight.sh`), JPEG 2000 again with the tag-tree fix, and
-   consider continuous runs in CI.
-4. **Lossless JPEG regression inputs.** WSQ has them. The lossless JPEG crash
+3. **Lossless JPEG regression inputs.** WSQ has them. The lossless JPEG crash
    inputs are mutations of real BioCTS prints and would have to be minimised
    first, against an NBIS build that was removed.
-5. **Signing and notarization.** macOS builds are signed ad hoc; Developer ID
-   signing and notarization need certificates (CI secrets are wired in
-   `.github/workflows/desktop.yml`). Windows signing likewise.
-6. **Updater.** None. If added, it must be off in restricted builds.
+4. **Updater.** None. If added, it must be off in restricted builds.
 
 Done on 2026-09-30, with the reasons in [decisions.md](decisions.md): WSQ and
 JPEG 2000 in safe Rust, crash-report redaction, client event validation, and
 the `ready:` secret.
+
+Decided on 2026-10-01 ([decisions.md](decisions.md)): **no longer fuzz
+runs** (about two hours each for WSQ and JPEG 2000 is enough here; the 18
+slow JPEG 2000 inputs take about a second each with the fix), and **no code
+signing** (macOS builds are signed ad hoc, Windows builds are unsigned,
+releases carry `SHA256SUMS`; install steps in [ci.md](ci.md)).

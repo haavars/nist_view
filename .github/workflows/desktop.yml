@@ -1,7 +1,8 @@
-# Builds the desktop bundles for every target (docs/plan.md, "Build targets").
+# Builds the desktop bundles for every target (docs/ci.md).
 #
-# Signing: macOS builds are signed ad hoc unless the APPLE_* secrets are set,
-# and Windows builds are unsigned unless the AZURE_* secrets are set.
+# Not signed with a certificate (decided 2026-10-01): macOS builds are signed
+# ad hoc, which Apple Silicon requires to run at all, and Windows builds are
+# unsigned.
 name: Desktop
 
 on:
@@ -10,9 +11,11 @@ on:
     tags: ["v*"]
 
 env:
-  OTP_VERSION: "28.3"
-  ELIXIR_VERSION: "1.19.4-otp-28"
   MIX_ENV: prod
+  # Matches the tauri crate in src-tauri/Cargo.lock.
+  TAURI_CLI_VERSION: "2.12.1"
+  # Ad-hoc signing, for ElixirKit's release step and for Tauri.
+  APPLE_SIGNING_IDENTITY: "-"
 
 jobs:
   bundle:
@@ -22,8 +25,6 @@ jobs:
         include:
           - platform: macos-15
             target: aarch64-apple-darwin
-          - platform: macos-15-intel
-            target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
           - platform: ubuntu-22.04-arm
@@ -34,22 +35,69 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Linux build dependencies
-        if: startsWith(matrix.platform, 'ubuntu')
+      - name: Check the tag against the app version
+        if: github.ref_type == 'tag'
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          tag=${GITHUB_REF_NAME#v}
+          mix=$(sed -n 's/^ *version: "\(.*\)",$/\1/p' mix.exs)
+          tauri=$(jq -r .version src-tauri/tauri.conf.json)
+          cargo=$(sed -n 's/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml)
+          echo "tag $tag, mix.exs $mix, tauri.conf.json $tauri, Cargo.toml $cargo"
+          [ "$tag" = "$mix" ] && [ "$tag" = "$tauri" ] && [ "$tag" = "$cargo" ]
+
+      - name: Read versions
+        id: versions
+        shell: bash
+        run: echo "rust=$(awk '$1 == "rust" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      # setup-beam does not recognise the arm64 Ubuntu image's ImageOS
+      # (erlef/setup-beam#462); strip the suffix around it, as Livebook does.
+      - name: Normalise ImageOS
+        shell: bash
+        run: |
+          echo "ORIGINAL_IMAGE_OS=$ImageOS" >> "$GITHUB_ENV"
+          echo "ImageOS=${ImageOS%-arm64}" >> "$GITHUB_ENV"
 
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: ${{ env.OTP_VERSION }}
-          elixir-version: ${{ env.ELIXIR_VERSION }}
+          version-file: .tool-versions
+          version-type: strict
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore ImageOS
+        if: always()
+        shell: bash
+        run: echo "ImageOS=$ORIGINAL_IMAGE_OS" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.versions.outputs.rust }}
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            native/nist_codecs
+            native/nist_decode
+          cache-directories: ~/.cargo/bin
+          key: ${{ matrix.target }}
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf file
+
+      - name: Install Tauri CLI
+        shell: bash
+        run: |
+          if [ "$(cargo tauri --version 2>/dev/null)" != "tauri-cli $TAURI_CLI_VERSION" ]; then
+            cargo install tauri-cli --version "=$TAURI_CLI_VERSION" --locked --force
+          fi
 
       - name: Fetch Elixir dependencies
         run: mix deps.get --only prod
@@ -60,27 +108,28 @@ jobs:
       # The standalone Tailwind binary's ad-hoc signature does not survive
       # download on recent macOS (it is killed on launch).
       - name: Re-sign Tailwind (macOS)
-        if: startsWith(matrix.platform, 'macos')
+        if: runner.os == 'macOS'
         run: codesign --force --sign - _build/tailwind-*
 
       - name: Build Tauri bundle
         uses: tauri-apps/tauri-action@v0.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_P12_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         with:
           projectPath: src-tauri
+          tauriScript: cargo tauri
           args: --target ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
+      # The release the bundle carries: its Erlang runtime, the codecs NIF
+      # and the nist_decode helper, on this platform (docs/ci.md, step 3).
+      - name: Smoke test the release
+        shell: bash
+        run: |
+          bin=src-tauri/target/rel/bin/nist_view
+          if [ "$RUNNER_OS" = Windows ]; then bin=$bin.bat; fi
+          "$bin" eval 'Code.eval_file("scripts/release_smoke.exs")'
+
+      - uses: actions/upload-artifact@v7
         with:
           name: nist-viewer-${{ matrix.target }}
           path: |
@@ -89,3 +138,39 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*-setup.exe
+
+  # A tag makes a draft release with every installer and their SHA256SUMS
+  # (docs/ci.md, step 4). Publishing the draft is left to a person.
+  release:
+    needs: bundle
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: nist-viewer-*
+          merge-multiple: true
+
+      - name: Collect the installers and write SHA256SUMS
+        run: |
+          mkdir release
+          find dist -type f | while IFS= read -r f; do
+            name=$(basename "$f")
+            cp "$f" "release/${name// /-}"
+          done
+          cd release
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --draft \
+            --title "NIST Viewer $GITHUB_REF_NAME" --notes-file .github/release-notes.md

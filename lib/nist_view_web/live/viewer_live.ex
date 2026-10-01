@@ -281,7 +281,11 @@ defmodule NistViewWeb.ViewerLive do
     end
   end
 
-  def handle_event("key", %{"key" => key}, %{assigns: %{file: %{records: records}}} = socket)
+  def handle_event(
+        "key",
+        %{"key" => key},
+        %{assigns: %{file: %{records: [_ | _] = records}}} = socket
+      )
       when key in ["ArrowDown", "ArrowUp", "j", "k"] do
     step = if key in ["ArrowDown", "j"], do: 1, else: -1
     index = ((socket.assigns.selected || 0) + step) |> max(0) |> min(length(records) - 1)

@@ -208,3 +208,24 @@ is another program.
 port plans, the JPEG 2000 evaluation and the milestone logs in `plan.md` were
 replaced by [wsq.md](wsq.md), [jp2.md](jp2.md) and a short status in
 [plan.md](plan.md). The history is in git.
+
+## 2026-10-01
+
+**No longer fuzz runs.** The viewer runs airgapped on known data, so crafted
+input is not a realistic threat; what matters is that real files decode.
+About two hours per decoder found what fuzzing finds here (the NBIS memory
+errors, the slow JPEG 2000 inputs), so the planned runs of many hours are
+dropped.
+
+**No code signing.** No Apple Developer ID, notarization or Windows
+certificate. macOS builds are signed ad hoc, which Apple Silicon requires;
+releases carry `SHA256SUMS` instead, and users allow the app once by hand
+(steps in [ci.md](ci.md)). Machines that admit only signed software cannot
+run it.
+
+**CI on GitHub-hosted runners.** Every target has to be built on its own OS,
+and GitHub is the only service with all of them free for a public
+repository; Livebook Desktop builds the same stack the same way. Details:
+[ci.md](ci.md).
+
+**macOS x86_64 dropped.** Nobody uses it, and its runner was the slowest.

@@ -18,8 +18,8 @@ the image decoders (in a helper process) and PNG encoding (a NIF), and
 - Show every record, field, subfield and item.
 - Render every image-bearing record, whatever its compression.
 - Overlay Type-9 minutiae on the matching fingerprint.
-- Native builds for macOS (arm64, x86_64), Linux (x86_64, aarch64) and
-  Windows (x64).
+- Native builds for macOS (arm64), Linux (x86_64, aarch64) and Windows
+  (x64). macOS x86_64 was dropped on 2026-10-01: nobody uses it.
 - Display only: no biometric data is written to disk.
 
 **Non-goals (v1)**
@@ -53,7 +53,7 @@ Unknown fields are shown, never rejected. Format details and quirks:
 | M1 | Parser complete, all record types, M1 and EFS minutiae | ✅ Prüm samples not run |
 | M2 | Codecs: WSQ, JPEGB, JPEGL, JP2/JP2L, PNG, raw | ✅ |
 | M3 | Viewer UI: record list, image pane, tenprint card, minutiae overlay | ✅ Reworked 2026-09-30: toolbars outside the image, resizable panes, status bar, shortcuts panel |
-| M4 | Desktop packaging: Tauri + ElixirKit, file associations, CI for five targets | ✅ macOS arm64. CI never run; double-click opening untested |
+| M4 | Desktop packaging: Tauri + ElixirKit, file associations, CI for four targets | ✅ CI builds and smoke-tests all four ([ci.md](ci.md)); not yet installed on clean machines; double-click opening untested |
 | M5 | Hardening | Mostly done: out-of-process decoding, all decoders in safe Rust ([wsq.md](wsq.md), [jp2.md](jp2.md)), fuzzing, security review. Open: [security.md](security.md#open-items) |
 | M6 | Performance: images load fast | Not started. Measured below |
 
@@ -69,16 +69,17 @@ In the suggested order:
 1. **Real Prüm files.** Run the M0/M1 checks on the Prüm `.eml` samples
    (M1 minutiae, Type-13 latents, all-Type-4 cards). They have not been
    available on the machines used so far.
-2. **Beyond this Mac (M4).** Run the CI workflow for the five targets;
-   install the app and open a file by double-click; decide which platforms
-   are needed (open question 4).
+2. **Beyond this Mac (M4).** CI builds all four targets
+   ([ci.md](ci.md)); install each on a clean, offline machine and open a
+   file by double-click (ci.md, step 5); decide whether Windows is needed
+   (open question 4).
 3. **Large images (M6).** Split the JPEG 2000 time into decoding and PNG
    encoding, then pick the cheapest fix: faster PNG settings, a downscaled
    first view (`target_resolution`), or decoding neighbouring records ahead.
-4. **Hardening (M5).** An overnight fuzz run (`fuzz/overnight.sh`, run by
-   the owner); a sandbox for the helper, macOS first; the libjpeg-turbo
-   differential target; lossless JPEG regression inputs. Signing waits for
-   certificates.
+4. **Hardening (M5),** lower priority since the viewer runs airgapped on
+   known data: a sandbox for the helper, macOS first; the libjpeg-turbo
+   differential target; lossless JPEG regression inputs. No longer fuzz
+   runs and no code signing (decisions of 2026-10-01).
 5. **Viewer features,** after using it: a ruler in mm, search across
    fields, two images side by side, a light theme.
 
@@ -89,23 +90,23 @@ In the suggested order:
    blocks? (Prüm uses M1; abis_next writes EFS.)
 3. Will we need current INT-I v6 files? They are XML only.
 4. Which platforms are really needed? Is Windows in scope, and is macOS only
-   for development?
-5. Code-signing certificates and the internal distribution channel for the
-   restricted network.
+   for development? (macOS x86_64 is out.)
+5. The internal distribution channel for the restricted network. (No
+   code-signing certificates: decided 2026-10-01.)
 
 ## Build targets
 
 | Target | Runner | Notes |
 |---|---|---|
-| macOS arm64 | macos-14 | Sign and notarize |
-| macOS x86_64 | macos-13 | Or a universal binary |
-| Linux x86_64 | Ubuntu 22.04 | webkit2gtk-4.1; 22.04 for glibc compatibility; .deb and AppImage |
-| Linux aarch64 | Ubuntu 22.04 arm64 | Same |
-| Windows x64 | windows-latest | MSI/NSIS; code signing |
+| macOS arm64 | macos-15 | .dmg; signed ad hoc, not notarized |
+| Linux x86_64 | ubuntu-22.04 | webkit2gtk-4.1; 22.04 for glibc compatibility; .deb and AppImage |
+| Linux aarch64 | ubuntu-22.04-arm | Same |
+| Windows x64 | windows-2022 | MSI and NSIS installer; unsigned |
 
 Each target builds natively: the NIF and helper (Cargo), the Elixir release
-(including ERTS) and the Tauri bundle. Workflow:
-`.github/workflows/desktop.yml`.
+(including ERTS) and the Tauri bundle. Workflows: `.github/workflows/ci.yml`
+(tests) and `.github/workflows/desktop.yml` (installers, and draft releases
+from `v*` tags); how they work and what they needed: [ci.md](ci.md).
 
 ## References
 

@@ -155,6 +155,7 @@ to the lower limit under cargo-fuzz.
   build it with ASan, link it only into the fuzz crate, correct NBIS's table
   class before handing it the bytes, request no colour conversion, and
   assert identical pixels.
-- Runs of hours for `jpegl`, `jp2` (with the tag-tree fix) and `headers`
-  (`overnight.sh`), on arm64 too, and perhaps a scheduled CI job.
+- ~~Runs of hours~~: not planned, since the viewer runs airgapped on known
+  data ([decisions.md](decisions.md), 2026-10-01). `overnight.sh` stays for
+  a run after a decoder change.
 - Regression inputs for lossless JPEG in `fuzz/regressions/jpegl/`.

@@ -115,6 +115,7 @@ prints what its SIZ and COD markers declare.
 - One lossy image is pinned by hash in `test/nist_view/biocts_sample_test.exs`;
   it and the differential counts are the same on x86_64 and arm64.
 - **Fuzzing:** 2.0 million inputs in 110 minutes, no crash or out-of-memory;
-  coverage was still rising. The slow inputs above came from this run. A
-  longer run with the fix is still to do ([fuzzing.md](fuzzing.md)).
+  coverage was still rising. The slow inputs above came from this run; with
+  the fix, all 18 take about a second under the fuzz build. No longer run is
+  planned ([decisions.md](decisions.md), 2026-10-01).
 - 30,000 mutated inputs before the change: no panic, slowest 0.04 s.
