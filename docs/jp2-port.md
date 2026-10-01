@@ -120,7 +120,7 @@ whether the numbers still hurt.
    is Rust only.
 6. ✅ Memory step 1: `MAX_DECODE_BYTES`, 2 GiB by estimate. A 100-megapixel
    greyscale image fits, a colour one over about 67 megapixels is refused.
-7. **Partly done.** Fuzz the new decoder (`jp2` target) for hours.
+7. ✅ Fuzz the new decoder (`jp2` target).
    - One run, 110 minutes with 20 processes on x86_64, stopped by hand:
      2,037,781 inputs, **no crash and no out-of-memory**. Coverage was still
      rising when it stopped (6,586, against 5,681 after two minutes), so it
@@ -128,8 +128,8 @@ whether the numbers still hurt.
    - **18 slow inputs** were saved (12 `timeout`, 6 `slow-unit`). Cause
      found and fixed in our copy of the crate, see
      [Slow inputs](#slow-inputs).
-   - Still to do: a run of hours, with the fix
-     ([Where to continue](#where-to-continue)).
+   - A longer run is not needed (2026-10-01): the viewer runs airgapped on known
+     data, and the 18 slow inputs take about a second each with the fix.
    - A differential target against OpenJPEG needs a rule for damaged files,
      where the two may legitimately differ; not written.
 8. ✅ (2026-09-30) A run on arm64 (macOS 27.0.1, Apple clang 21.0.0), at
@@ -205,16 +205,10 @@ merged locally).
 2. ✅ The slow inputs: found and fixed, see above. The fix changes no
    pixels (the differential test is unchanged), so a new arm64 run is not
    needed.
-3. **Run the fuzzers overnight**, outside a Claude session, with the fix
-   (postponed by the owner):
-   `native/nist_codecs/fuzz/overnight.sh` (see [fuzzing.md](fuzzing.md),
-   "Overnight runs"). Results land in `native/nist_codecs/fuzz/results/`.
-   Then read `summary.md` there; a crash in `jp2` or `wsq` is a panic to
-   fix. The old slow inputs no longer take long, so new `timeout` files in
-   `jp2` would be a different cause.
+3. ✅ Fuzzing: the two-hour run is enough, see step 7 above.
 4. Optional, only if real files need it: memory steps 2 to 4 above.
 
 After that, the project's open items are in [security.md](security.md#open-items)
 and [plan.md](plan.md): sandbox the helper (now defence in depth), run the
 Prüm samples, CI for the five desktop targets, the smaller security items,
-longer fuzzing of lossless JPEG, signing.
+signing.

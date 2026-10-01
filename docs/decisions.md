@@ -178,3 +178,11 @@ and left the loop in place for tiled ones, which are slow at ordinary
 shapes. The fix is one early return that builds the same trees, so it is
 carried in our copy next to the reconstruction fix and, like it, not
 reported upstream.
+
+## 2026-10-01
+
+**No longer fuzz runs.** The viewer runs airgapped on known data, so crafted
+input is not a realistic threat; what matters is that real files decode.
+About two hours per decoder found what fuzzing finds here (the NBIS memory
+errors, the slow JPEG 2000 inputs), so the planned runs of many hours are
+dropped.
