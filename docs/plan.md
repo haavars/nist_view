@@ -4,7 +4,7 @@ A cross-platform desktop viewer for ANSI/NIST-ITL transaction files (`.nst`, `.a
 
 Stack: **Elixir/Phoenix LiveView** for the UI and parsing, **one Rust NIF** for image codecs, and **Tauri + ElixirKit** as the desktop shell.
 
-Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan), [jp2-rust-eval](jp2-rust-eval.md) and [jp2-port](jp2-port.md) (JPEG 2000 in safe Rust: the evaluation and the change).
+Related documents: [architecture](architecture.md) (how it is built), [formats](formats.md) (the file format as implemented), [security](security.md) (controls, fuzzing results, open items), [fuzzing](fuzzing.md) (how to fuzz), [ci](ci.md) (CI and release builds), [decisions](decisions.md) (decision log), [wsq-port](wsq-port.md) (safe-Rust WSQ: research and plan), [jp2-rust-eval](jp2-rust-eval.md) and [jp2-port](jp2-port.md) (JPEG 2000 in safe Rust: the evaluation and the change).
 
 ---
 
@@ -144,13 +144,13 @@ Details, fuzzing results and open items: [security.md](security.md).
 
 | Target | Runner | Notes |
 |---|---|---|
-| macOS arm64 | macos-14 | Sign and notarize |
-| macOS x86_64 | macos-13 | Or universal binary |
+| macOS arm64 | macos-15 | Sign and notarize |
+| macOS x86_64 | macos-15-intel | Or universal binary |
 | Linux x86_64 | Ubuntu 22.04 | webkit2gtk-4.1; build on 22.04 for glibc compatibility; .deb and AppImage |
 | Linux aarch64 | Ubuntu 22.04 arm64 | Same |
-| Windows x64 | windows-latest | MSI/NSIS; code signing |
+| Windows x64 | windows-2022 | MSI/NSIS; code signing |
 
-- Each target builds natively: NIF (`cargo`), Elixir release (`mix release`, including ERTS) and Tauri bundle (`cargo tauri build`).
+- Each target builds natively: NIF (`cargo`), Elixir release (`mix release`, including ERTS) and Tauri bundle (`cargo tauri build`). Plan for getting this running on GitHub: [ci.md](ci.md).
 
 ---
 
