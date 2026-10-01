@@ -1,0 +1,78 @@
+# Runs `mix precommit` on every push to main and every pull request
+# (docs/ci.md, step 1). Both x86_64 and arm64, because the decoder's pixel
+# checks depend on the CPU.
+name: CI
+
+on:
+  push:
+    # ci: temporary, while the workflows are being made to work (docs/ci.md).
+    branches: [main, ci]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-24.04, macos-15]
+
+    runs-on: ${{ matrix.platform }}
+
+    env:
+      MIX_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read versions
+        id: versions
+        run: echo "rust=$(awk '$1 == "rust" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.versions.outputs.rust }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native/nist_codecs
+            native/nist_decode
+            native/hayro-jpeg2000
+            native/nbis_ref
+            native/opj_ref
+
+      - name: Cache Mix deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+
+      # The BioCTS samples (150 MB from nist.gov); without them
+      # biocts_sample_test.exs is skipped.
+      - name: Cache BioCTS samples
+        id: samples
+        uses: actions/cache@v4
+        with:
+          path: test/samples/biocts
+          key: biocts-2.0.6107.19926
+
+      - run: mix deps.get
+
+      - name: Fetch BioCTS samples
+        if: steps.samples.outputs.cache-hit != 'true'
+        run: mix nist.samples
+
+      - run: mix precommit
+
+      # precommit formats and unlocks unused deps in place.
+      - name: Check that precommit changed nothing
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"

@@ -1,4 +1,4 @@
-# Builds the desktop bundles for every target (docs/plan.md §5).
+# Builds the desktop bundles for every target (docs/ci.md).
 #
 # Signing: macOS builds are signed ad hoc unless the APPLE_* secrets are set,
 # and Windows builds are unsigned unless the AZURE_* secrets are set.
@@ -8,11 +8,13 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+    # Temporary, while the workflow is being made to work (docs/ci.md, step 2).
+    branches: [ci]
 
 env:
-  OTP_VERSION: "28.3"
-  ELIXIR_VERSION: "1.19.4-otp-28"
   MIX_ENV: prod
+  # Matches the tauri crate in src-tauri/Cargo.lock.
+  TAURI_CLI_VERSION: "2.12.1"
 
 jobs:
   bundle:
@@ -36,20 +38,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Linux build dependencies
-        if: startsWith(matrix.platform, 'ubuntu')
+      - name: Read versions
+        id: versions
+        shell: bash
+        run: echo "rust=$(awk '$1 == "rust" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      # setup-beam does not recognise the arm64 Ubuntu image's ImageOS
+      # (erlef/setup-beam#462); strip the suffix around it, as Livebook does.
+      - name: Normalise ImageOS
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          echo "ORIGINAL_IMAGE_OS=$ImageOS" >> "$GITHUB_ENV"
+          echo "ImageOS=${ImageOS%-arm64}" >> "$GITHUB_ENV"
 
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: ${{ env.OTP_VERSION }}
-          elixir-version: ${{ env.ELIXIR_VERSION }}
+          version-file: .tool-versions
+          version-type: strict
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore ImageOS
+        if: always()
+        shell: bash
+        run: echo "ImageOS=$ORIGINAL_IMAGE_OS" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.versions.outputs.rust }}
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            native/nist_codecs
+            native/nist_decode
+          cache-directories: ~/.cargo/bin
+          key: ${{ matrix.target }}
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf file
+
+      - name: Install Tauri CLI
+        shell: bash
+        run: |
+          if [ "$(cargo tauri --version 2>/dev/null)" != "tauri-cli $TAURI_CLI_VERSION" ]; then
+            cargo install tauri-cli --version "=$TAURI_CLI_VERSION" --locked --force
+          fi
 
       - name: Fetch Elixir dependencies
         run: mix deps.get --only prod
@@ -60,7 +98,7 @@ jobs:
       # The standalone Tailwind binary's ad-hoc signature does not survive
       # download on recent macOS (it is killed on launch).
       - name: Re-sign Tailwind (macOS)
-        if: startsWith(matrix.platform, 'macos')
+        if: runner.os == 'macOS'
         run: codesign --force --sign - _build/tailwind-*
 
       - name: Build Tauri bundle
@@ -78,7 +116,17 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         with:
           projectPath: src-tauri
+          tauriScript: cargo tauri
           args: --target ${{ matrix.target }}
+
+      # The release the bundle carries: its Erlang runtime, the codecs NIF
+      # and the nist_decode helper, on this platform (docs/ci.md, step 3).
+      - name: Smoke test the release
+        shell: bash
+        run: |
+          bin=src-tauri/target/rel/bin/nist_view
+          if [ "$RUNNER_OS" = Windows ]; then bin=$bin.bat; fi
+          "$bin" eval 'Code.eval_file("scripts/release_smoke.exs")'
 
       - uses: actions/upload-artifact@v4
         with:
