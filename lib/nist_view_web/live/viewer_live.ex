@@ -46,6 +46,7 @@ defmodule NistViewWeb.ViewerLive do
       view: :record,
       tab: :fields,
       renders: %{},
+      jobs: MapSet.new(),
       tenprint: %{},
       minutiae: [],
       hex: nil,
@@ -182,6 +183,7 @@ defmodule NistViewWeb.ViewerLive do
     |> stream(:fields, field_items(record, index), reset: true)
     |> set_hex({:record, index})
     |> ensure_render(index)
+    |> decode_ahead()
   end
 
   defp field_items(%Record{} = record, index) do
@@ -201,32 +203,125 @@ defmodule NistViewWeb.ViewerLive do
 
   # -- Images ------------------------------------------------------------------
 
-  defp ensure_render(socket, index) do
-    %{file: file, renders: renders, generation: generation} = socket.assigns
+  # Large JPEG 2000 images are shown in two steps: a preview decoded at a
+  # reduced resolution of at least this size, several times faster, then the
+  # full image. Once the selected image is done, the file's other images are
+  # decoded ahead, so that switching to them is immediate. At most @max_jobs
+  # decodes run at once, apart from the ones the user asks for.
+  @preview_size Application.compile_env(:nist_view, :preview_size, {800, 800})
+  @max_jobs 2
 
-    case Enum.at(file.records, index) do
-      %Record{image: image} when not is_nil(image) and not is_map_key(renders, index) ->
-        socket
-        |> assign(renders: Map.put(renders, index, %{status: :loading}))
-        |> start_async({:render, generation, index}, fn -> Imaging.displayable(image) end)
+  # Starts rendering an image the user is looking at, unless it is already
+  # rendered or under way.
+  defp ensure_render(socket, index) do
+    case Enum.at(socket.assigns.file.records, index) do
+      %Record{image: image} when not is_nil(image) ->
+        if is_map_key(socket.assigns.renders, index),
+          do: socket,
+          else: start_job(socket, index, first_stage(image))
 
       _ ->
         socket
     end
   end
 
+  defp first_stage(image),
+    do: if(Imaging.previewable?(image, @preview_size), do: :preview, else: :full)
+
+  defp start_job(socket, index, stage) do
+    %{file: file, renders: renders, jobs: jobs, generation: generation} = socket.assigns
+    image = Enum.at(file.records, index).image
+
+    work =
+      case stage do
+        :preview -> fn -> Imaging.preview(image, @preview_size) end
+        :full -> fn -> Imaging.displayable(image) end
+      end
+
+    socket
+    |> assign(
+      renders: Map.put_new(renders, index, %{status: :loading}),
+      jobs: MapSet.put(jobs, {index, stage})
+    )
+    |> start_async({:render, generation, index, stage}, work)
+  end
+
+  # Fills the free decode slots: the selected image first, then the ones
+  # after it, wrapping around.
+  defp decode_ahead(socket) do
+    if MapSet.size(socket.assigns.jobs) < @max_jobs do
+      case next_job(socket.assigns) do
+        {index, stage} -> socket |> start_job(index, stage) |> decode_ahead()
+        nil -> socket
+      end
+    else
+      socket
+    end
+  end
+
+  defp next_job(%{file: %{records: records}, selected: selected, renders: renders, jobs: jobs}) do
+    count = length(records)
+    first = selected || 0
+
+    Enum.find_value(0..(count - 1)//1, fn offset ->
+      index = rem(first + offset, count)
+
+      case {Enum.at(records, index), renders[index]} do
+        {%Record{image: nil}, _} -> nil
+        {%Record{image: image}, nil} -> {index, first_stage(image)}
+        {_, %{status: :ok, full?: false}} -> unless {index, :full} in jobs, do: {index, :full}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp next_job(_assigns), do: nil
+
   @impl true
-  def handle_async({:render, generation, index}, result, socket) do
+  def handle_async({:render, generation, index, stage}, result, socket) do
     if generation == socket.assigns.generation do
-      render = render_result(result)
-      {:noreply, assign(socket, renders: Map.put(socket.assigns.renders, index, render))}
+      %{renders: renders, jobs: jobs} = socket.assigns
+
+      render =
+        result
+        |> render_result()
+        |> Map.put(:key, "#{generation}-#{index}")
+        |> keep_preview(renders[index])
+
+      {:noreply,
+       socket
+       |> assign(
+         renders: Map.put(renders, index, render),
+         jobs: MapSet.delete(jobs, {index, stage})
+       )
+       |> decode_ahead()}
     else
       {:noreply, socket}
     end
   end
 
+  # A full image keeps its preview: the page shows the small preview first
+  # while it loads the full image, which takes a while for a large one.
+  defp keep_preview(%{status: :ok, full?: true} = render, %{status: :ok, full?: false} = preview),
+    do: Map.merge(render, %{preview: preview.url, width: preview.width, height: preview.height})
+
+  defp keep_preview(render, _previous), do: render
+
+  defp render_result({:ok, {:preview, mime, bytes, {width, height}}}) do
+    token = ImageStore.put(self(), mime, bytes)
+
+    %{
+      status: :ok,
+      url: ~p"/render/#{token}",
+      token: token,
+      full?: false,
+      width: width,
+      height: height
+    }
+  end
+
   defp render_result({:ok, {:ok, mime, bytes}}) do
-    %{status: :ok, url: ~p"/render/#{ImageStore.put(self(), mime, bytes)}"}
+    %{status: :ok, url: ~p"/render/#{ImageStore.put(self(), mime, bytes)}", full?: true}
   end
 
   defp render_result({:ok, {:error, reason}}),

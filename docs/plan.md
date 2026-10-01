@@ -55,12 +55,22 @@ Unknown fields are shown, never rejected. Format details and quirks:
 | M3 | Viewer UI: record list, image pane, tenprint card, minutiae overlay | ✅ Reworked 2026-09-30: toolbars outside the image, resizable panes, status bar, shortcuts panel |
 | M4 | Desktop packaging: Tauri + ElixirKit, file associations, CI for four targets | ✅ CI builds and smoke-tests all four ([ci.md](ci.md)); not yet installed on clean machines; double-click opening untested |
 | M5 | Hardening | Mostly done: out-of-process decoding, all decoders in safe Rust ([wsq.md](wsq.md), [jp2.md](jp2.md)), fuzzing, security review. Open: [security.md](security.md#open-items) |
-| M6 | Performance: images load fast | Not started. Measured below |
+| M6 | Performance: images load fast | ✅ Large JPEG 2000: preview first, decode-ahead, images kept in the page (2026-10-01). Measured below |
 
 **Performance, measured 2026-09-30** (dev build, arm64): parsing is under
 10 ms even for a 16 MB file. WSQ is fast: a 14-print tenprint card renders
 in 42 ms. A 3300 × 4400 JPEG 2000 face takes 0.5 to 1.2 s and becomes an
 11 to 13 MB PNG, the one noticeable wait in the viewer.
+
+**After M6, measured 2026-10-01** (prod build, x86_64 Linux, headless
+Firefox, the BioCTS file with five 3300 × 4400 faces), time from click to
+image:
+
+| | Before | After |
+|---|---|---|
+| A face not decoded yet | 1.5 s | preview 0.09 s, full 1.6 s |
+| A face decoded ahead, not shown yet | 1.5 s | preview 0.07 s, full 0.4 s |
+| A face shown before | 0.4 to 0.7 s | 0.03 s |
 
 ## Next
 
@@ -73,9 +83,9 @@ In the suggested order:
    ([ci.md](ci.md)); install each on a clean, offline machine and open a
    file by double-click (ci.md, step 5); decide whether Windows is needed
    (open question 4).
-3. **Large images (M6).** Split the JPEG 2000 time into decoding and PNG
-   encoding, then pick the cheapest fix: faster PNG settings, a downscaled
-   first view (`target_resolution`), or decoding neighbouring records ahead.
+3. **Large images (M6),** if still needed after trying it in the app: the
+   full 13 MB PNG of a face still takes about 0.3 s to load in the page
+   (faster PNG settings, or sending raw pixels to a canvas).
 4. **Hardening (M5),** lower priority since the viewer runs airgapped on
    known data: a sandbox for the helper, macOS first; the libjpeg-turbo
    differential target; lossless JPEG regression inputs. No longer fuzz

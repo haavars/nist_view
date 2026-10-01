@@ -97,6 +97,11 @@ webview:
 | Lossless JPEG | `nist_decode` (`nist_codecs::jpegl`, safe Rust) → PNG |
 | Uncompressed | 8-bit grey or RGB → PNG |
 
+`Imaging.preview/2` does the same for a large JPEG 2000 image at a reduced
+resolution of at least 800 × 800 (`jp2::decode_at`, the helper's `P`
+request), skipping the finer wavelet levels: a 3300 × 4400 face decodes at
+825 × 1100 in 0.15 s instead of 0.6 to 1.5 s.
+
 YCbCr is converted to RGB in one place (`Imaging`), when the decoder reports
 sYCC or the record's colour space field (10.012, 17.013) says YCC or SYCC.
 Samples above 8 bits are scaled to 8 for display.
@@ -128,11 +133,18 @@ signal gives `{:error, :decoder_crashed}`; one that exceeds the timeout
   on the server. Every event checks its parameters and ignores anything
   malformed, out of range or sent with no file open.
 - **Rendering:** images are decoded in `start_async` tasks, keyed by a
-  generation counter so results for a previously open file are dropped, and
-  only for the selected record (or all fingers in the tenprint view). The
-  bytes go to `ImageStore` under a random token, owned by the LiveView
+  generation counter so results for a previously open file are dropped.
+  The selected record (or every finger in the tenprint view) is decoded at
+  once; a large JPEG 2000 image first as a preview, then in full. After
+  that the file's other images are decoded ahead, at most two at a time.
+  The bytes go to `ImageStore` under a random token, owned by the LiveView
   process and dropped when it exits; `/render/:token` serves them with
-  `cache-control: no-store`.
+  `cache-control: no-store`. A full image keeps its preview's URL.
+- **Image in the page:** the `.ImageViewer` hook places the `<img>` itself
+  (the server sends the URLs, the full size and a key for file and record
+  on `#viewer-stage`). It shows a preview while the full image loads, and
+  keeps the last eight loaded images in memory, so going back to a record
+  needs no fetch.
 - **Layout:** a header (file name and Type-1 facts), the record list, and the
   selected record: its image with a toolbar strip above and a strip for the
   minutiae legend and pixel readout below, then the fields or hex panel. A

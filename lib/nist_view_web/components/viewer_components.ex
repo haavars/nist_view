@@ -885,10 +885,22 @@ defmodule NistViewWeb.ViewerComponents do
         class="viewer-canvas relative min-h-0 flex-1 cursor-grab touch-none overflow-hidden select-none active:cursor-grabbing"
       >
         <%= case @render do %>
-          <% %{status: :ok, url: url} -> %>
+          <% %{status: :ok, url: url} = render -> %>
+            <%!-- The hook puts the image in #viewer-picture and keeps recent
+                 ones loaded (data-key names the file and record). A large
+                 JPEG 2000 image also has a smaller preview (data-preview, or
+                 data-src itself until the full image is decoded), which is
+                 shown while the full one loads; data-width and data-height
+                 give the full size, which the stage always has. --%>
             <div
               id="viewer-stage"
               data-stage
+              data-src={url}
+              data-preview={render[:preview]}
+              data-key={render[:key]}
+              data-width={render[:width]}
+              data-height={render[:height]}
+              data-alt={Viewer.title(@record)}
               phx-mounted={JS.ignore_attributes(["style"])}
               class="absolute top-0 left-0 origin-top-left shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_12px_40px_rgba(0,0,0,0.6)]"
             >
@@ -898,14 +910,7 @@ defmodule NistViewWeb.ViewerComponents do
                 phx-mounted={JS.ignore_attributes(["style"])}
                 class="h-full w-full"
               >
-                <img
-                  id="viewer-image"
-                  data-image
-                  src={url}
-                  alt={Viewer.title(@record)}
-                  draggable="false"
-                  class="block h-full w-full max-w-none"
-                />
+                <div id="viewer-picture" data-picture phx-update="ignore" class="h-full w-full"></div>
               </div>
               <.minutiae_overlay
                 :if={@minutiae != []}
@@ -985,6 +990,18 @@ defmodule NistViewWeb.ViewerComponents do
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ImageViewer">
+        // Loaded images by data-key (file and record): the latest of preview
+        // and full image, with the image's full size. Kept across mounts, so
+        // going back to a record shows it at once. In memory only.
+        const cache = new Map()
+        const CACHE_SIZE = 8
+
+        function remember(key, entry) {
+          cache.delete(key)
+          cache.set(key, entry)
+          while (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value)
+        }
+
         export default {
           mounted() {
             this.state = {scale: 1, tx: 0, ty: 0, invert: false, contrast: 1, brightness: 1, gamma: 1, fitMode: true}
@@ -993,6 +1010,8 @@ defmodule NistViewWeb.ViewerComponents do
             this.panel = this.el.querySelector("[data-adjust-panel]")
             this.zoomLabel = this.el.querySelector("[data-zoom-label]")
             this.listeners = []
+            this.loading = new Set()
+            this.pixels = null
 
             this.on(this.el, "click", e => this.onClick(e))
             this.on(this.el, "input", e => this.onInput(e))
@@ -1024,24 +1043,75 @@ defmodule NistViewWeb.ViewerComponents do
             this.listeners.push([target, type, fn, opts])
           },
 
-          image() { return this.el.querySelector("[data-image]") },
+          image() { return this.shown?.img },
 
+          stage() { return this.el.querySelector("[data-stage]") },
+
+          // Shows the stage's image: at once if a version of it is loaded,
+          // and the newer version (the full image after a preview) when it
+          // has loaded. Never another record's image in the meantime.
           loadImage() {
-            const img = this.image()
-            if (!img) { this.src = null; return }
-            if (img.getAttribute("src") === this.src) { this.apply(); return }
+            const stage = this.stage()
+            if (!stage) { this.shown = null; return }
+            const {src, preview, key} = stage.dataset
+            const cached = cache.get(key)
 
-            this.src = img.getAttribute("src")
-            this.pixels = null
-            const ready = () => { this.fit(); this.preparePixels(img) }
-            if (img.complete && img.naturalWidth) ready()
-            else img.addEventListener("load", ready, {once: true})
+            if (cached) this.show(stage, key, cached)
+            else if (this.shown?.key !== key) { stage.querySelector("[data-picture]").replaceChildren(); this.shown = null }
+
+            if (cached?.url !== src) {
+              if (preview && !cached) this.fetch(stage, key, preview)
+              this.fetch(stage, key, src)
+            }
+            this.apply()
           },
 
-          // Keeps a copy of the pixels for the readout, unless the image is huge.
-          preparePixels(img) {
+          fetch(stage, key, src) {
+            if (this.loading.has(src)) return
+            this.loading.add(src)
+            const {width, height} = stage.dataset
+            const img = new Image()
+            img.src = src
+            img.decode().catch(() => {}).then(() => {
+              this.loading.delete(src)
+              if (!img.naturalWidth) return
+              // The full size, which a preview is smaller than.
+              const size = [parseInt(width) || img.naturalWidth, parseInt(height) || img.naturalHeight]
+              const entry = {url: src, img, size, full: img.naturalWidth >= size[0]}
+              // A preview that loads after its full image is not needed.
+              if (cache.get(key)?.full && !entry.full) return
+              remember(key, entry)
+              const now = this.stage()
+              if (now?.dataset.key === key && (entry.full || this.shown?.key !== key || !this.shown.full))
+                this.show(now, key, entry)
+            })
+          },
+
+          show(stage, key, entry) {
+            const picture = stage.querySelector("[data-picture]")
+            const img = entry.img
+            if (this.shown?.img === img && picture.firstChild === img) return
+
+            img.id = "viewer-image"
+            img.alt = stage.dataset.alt || ""
+            img.draggable = false
+            img.className = "block h-full w-full max-w-none"
+            picture.replaceChildren(img)
+
+            const newRecord = this.shown?.key !== key
+            this.shown = {key, img, size: entry.size, full: entry.full}
+            this.pixels = null
+            newRecord ? this.fit() : this.apply()
+          },
+
+          // A copy of the pixels for the readout, made when first needed and
+          // only for images that are not huge.
+          readPixels() {
+            const img = this.image()
+            if (!img || this.pixels !== null) return this.pixels
             const w = img.naturalWidth, h = img.naturalHeight
-            if (w * h > 40e6) return
+            this.pixels = false
+            if (w * h > 40e6) return this.pixels
             try {
               const canvas = document.createElement("canvas")
               canvas.width = w
@@ -1049,12 +1119,15 @@ defmodule NistViewWeb.ViewerComponents do
               const ctx = canvas.getContext("2d", {willReadFrequently: true})
               ctx.drawImage(img, 0, 0)
               this.pixels = ctx
-            } catch (_e) { this.pixels = null }
+            } catch (_e) { this.pixels = false }
+            return this.pixels
           },
 
+          // The image's full size, also while a smaller preview is shown.
           size() {
-            const img = this.image()
-            return img ? [img.naturalWidth, img.naturalHeight] : [0, 0]
+            if (this.shown) return this.shown.size
+            const {width, height} = this.stage()?.dataset || {}
+            return width && height ? [parseInt(width), parseInt(height)] : [0, 0]
           },
 
           fit() {
@@ -1171,8 +1244,12 @@ defmodule NistViewWeb.ViewerComponents do
             let text = `x ${x}  y ${y}`
             const ppi = parseFloat(this.el.dataset.ppi)
             if (ppi > 0) text += `   ${(x / ppi * 25.4).toFixed(2)}, ${(y / ppi * 25.4).toFixed(2)} mm`
-            if (this.pixels) {
-              const [r, g, b] = this.pixels.getImageData(x, y, 1, 1).data
+            const pixels = this.readPixels()
+            if (pixels) {
+              // A preview has fewer pixels than the image.
+              const img = this.image()
+              const px = Math.floor(x * img.naturalWidth / w), py = Math.floor(y * img.naturalHeight / h)
+              const [r, g, b] = pixels.getImageData(px, py, 1, 1).data
               text += r === g && g === b ? `   value ${r}` : `   rgb ${r} ${g} ${b}`
             }
             this.setReadout(text)
