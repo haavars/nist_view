@@ -186,3 +186,9 @@ input is not a realistic threat; what matters is that real files decode.
 About two hours per decoder found what fuzzing finds here (the NBIS memory
 errors, the slow JPEG 2000 inputs), so the planned runs of many hours are
 dropped.
+
+**No code signing.** No Apple Developer ID, notarization or Windows
+certificate. macOS builds are signed ad hoc, which Apple Silicon requires;
+releases carry `SHA256SUMS` instead, and users allow the app once by hand
+(steps in [ci.md](ci.md)). Machines that admit only signed software cannot
+run it.

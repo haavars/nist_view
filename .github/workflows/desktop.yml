@@ -1,7 +1,8 @@
 # Builds the desktop bundles for every target (docs/ci.md).
 #
-# Signing: macOS builds are signed ad hoc unless the APPLE_* secrets are set,
-# and Windows builds are unsigned unless the AZURE_* secrets are set.
+# Not signed with a certificate (decided 2026-10-01): macOS builds are signed
+# ad hoc, which Apple Silicon requires to run at all, and Windows builds are
+# unsigned.
 name: Desktop
 
 on:
@@ -15,6 +16,8 @@ env:
   MIX_ENV: prod
   # Matches the tauri crate in src-tauri/Cargo.lock.
   TAURI_CLI_VERSION: "2.12.1"
+  # Ad-hoc signing, for ElixirKit's release step and for Tauri.
+  APPLE_SIGNING_IDENTITY: "-"
 
 jobs:
   bundle:
@@ -36,7 +39,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Read versions
         id: versions
@@ -105,15 +108,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_P12_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         with:
           projectPath: src-tauri
           tauriScript: cargo tauri

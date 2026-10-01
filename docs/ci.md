@@ -75,10 +75,20 @@ change.
    libraries (OpenSSL 3 on Linux); unsigned builds need a manual override
    (Gatekeeper on macOS, SmartScreen on Windows).
 
-6. **Signing**, when the certificates exist. The secrets are already passed
-   through: `APPLE_*` (Developer ID and notarization) and `AZURE_*`
-   (Windows). Add a notarization check (`spctl -a -t exec`) after the macOS
-   build, as Livebook does.
+6. **No signing with a certificate** (decided 2026-10-01): no Apple
+   Developer ID or notarization, no Windows code-signing certificate.
+   macOS builds are signed ad hoc (`APPLE_SIGNING_IDENTITY=-`), which
+   Apple Silicon needs to run them at all. Integrity comes from
+   `SHA256SUMS` (step 4). Users need these steps once per install, to be
+   written into the release notes:
+   - macOS: open the app, then allow it in System Settings → Privacy &
+     Security → Open Anyway; or remove the download flag with
+     `xattr -dr com.apple.quarantine "/Applications/NIST Viewer.app"`.
+     Copied from a USB stick, the app often has no such flag.
+   - Windows: the installer shows an unknown publisher; on a networked
+     machine SmartScreen first needs More info → Run anyway.
+   - Machines that only allow signed or notarized software (managed Macs,
+     Windows application control) cannot run these builds.
 
 Optional: pin third-party actions to a commit hash instead of a tag, and
 let Dependabot update them.
@@ -90,4 +100,3 @@ let Dependabot update them.
 - Steps 1 to 4: in a session, from this Linux machine; iterating means
   pushing the `ci` branch and reading the run logs.
 - Step 5 needs a Mac, a Windows machine and a Linux desktop.
-- Step 6 needs the certificates.

@@ -125,7 +125,8 @@ than crash.
 7. ~~Client event validation.~~ Done 2026-10-01: the viewer ignores event
    values that are malformed, out of range or sent with no file open,
    instead of crashing.
-8. **Signing and notarization.** macOS builds are signed ad hoc; Developer ID
-   signing and notarization need the certificates (CI secrets are wired in
-   `.github/workflows/desktop.yml`). Windows signing likewise.
+8. ~~Signing and notarization.~~ Decided 2026-10-01: no certificates. macOS
+   builds are signed ad hoc and Windows builds are unsigned; releases carry
+   `SHA256SUMS`, and the install steps for unsigned builds are in
+   [`ci.md`](ci.md).
 9. **Updater.** None. If added, it must be off in restricted builds.

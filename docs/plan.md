@@ -144,11 +144,11 @@ Details, fuzzing results and open items: [security.md](security.md).
 
 | Target | Runner | Notes |
 |---|---|---|
-| macOS arm64 | macos-15 | Sign and notarize |
+| macOS arm64 | macos-15 | Signed ad hoc, not notarized ([ci.md](ci.md)) |
 | macOS x86_64 | macos-15-intel | Or universal binary |
 | Linux x86_64 | Ubuntu 22.04 | webkit2gtk-4.1; build on 22.04 for glibc compatibility; .deb and AppImage |
 | Linux aarch64 | Ubuntu 22.04 arm64 | Same |
-| Windows x64 | windows-2022 | MSI/NSIS; code signing |
+| Windows x64 | windows-2022 | MSI/NSIS; unsigned |
 
 - Each target builds natively: NIF (`cargo`), Elixir release (`mix release`, including ERTS) and Tauri bundle (`cargo tauri build`). Plan for getting this running on GitHub: [ci.md](ci.md).
 
@@ -179,7 +179,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
 | M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
-| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; signing blocked on certificates) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
+| M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; no code signing, decided) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 
 ---
@@ -278,14 +278,13 @@ Details, fuzzing results and open items: [security.md](security.md).
   - minimised regression inputs for lossless JPEG (WSQ has them)
   - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`
-  - Developer ID signing and notarization, and Windows signing (need certificates)
 
 ## 8. Open questions
 1. ~~Which record types and compressions actually occur?~~ *Partly answered (§2):* Type-4, 9, 10, 13, 14 and 15, with WSQ, PNG and JPEGB. JPEG 2000 and JPEGL are now supported anyway. Still open: do the files we need to view contain Type-17 iris?
 2. ~~Which Type-9 minutiae block?~~ *Answered for Prüm:* INCITS 378 / M1. abis_next writes EFS. Still open: which block INT-I 4.22 files use, and whether we will see vendor-specific blocks.
 3. Will we need current INT-I v6 files? They are XML only (see the non-goals).
 4. Which platforms are really needed? Is Windows in scope, and is macOS only for development?
-5. Code-signing certificates and the internal distribution channel for the restricted network.
+5. ~~Code-signing certificates~~ (none, decided 2026-10-01) and the internal distribution channel for the restricted network.
 6. Is a NIF acceptable for the C codecs, or is out-of-process decoding required from day one?
 
 ---
