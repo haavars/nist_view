@@ -265,21 +265,29 @@ defmodule NistViewWeb.ViewerLive do
 
   # -- Events ------------------------------------------------------------------
 
+  # Event values come from the client: anything malformed, out of range or
+  # arriving without a file open is ignored rather than crashing the view.
+
   @impl true
   def handle_event("validate", _params, socket), do: {:noreply, socket}
 
   def handle_event("select", %{"index" => index}, socket) do
-    {:noreply, socket |> assign(view: :record) |> select(String.to_integer(index))}
+    case record_index(socket.assigns, index) do
+      {:ok, index} -> {:noreply, socket |> assign(view: :record) |> select(index)}
+      :error -> {:noreply, socket}
+    end
   end
 
-  def handle_event("key", %{"key" => key}, %{assigns: %{file: %{records: records}}} = socket)
+  def handle_event(
+        "key",
+        %{"key" => key},
+        %{assigns: %{file: %{records: [_ | _] = records}}} = socket
+      )
       when key in ["ArrowDown", "ArrowUp", "j", "k"] do
     step = if key in ["ArrowDown", "j"], do: 1, else: -1
     index = ((socket.assigns.selected || 0) + step) |> max(0) |> min(length(records) - 1)
     {:noreply, if(index == socket.assigns.selected, do: socket, else: select(socket, index))}
   end
-
-  def handle_event("key", _params, socket), do: {:noreply, socket}
 
   def handle_event("view", %{"view" => "tenprint"}, socket) do
     socket = Enum.reduce(Map.values(socket.assigns.tenprint), socket, &ensure_render(&2, &1))
@@ -293,23 +301,55 @@ defmodule NistViewWeb.ViewerLive do
     {:noreply, assign(socket, tab: String.to_existing_atom(tab))}
   end
 
-  def handle_event("hex_field", %{"number" => number}, socket) do
-    target = {:field, socket.assigns.selected, String.to_integer(number)}
-    {:noreply, socket |> set_hex(target) |> assign(tab: :hex)}
+  def handle_event("hex_field", %{"number" => number}, %{assigns: %{record: %Record{}}} = socket) do
+    %{record: record, selected: selected} = socket.assigns
+
+    with {:ok, number} <- parse_integer(number),
+         %Field{} <- Record.field(record, number) do
+      {:noreply, socket |> set_hex({:field, selected, number}) |> assign(tab: :hex)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
-  def handle_event("hex_record", _params, socket) do
+  def handle_event("hex_record", _params, %{assigns: %{record: %Record{}}} = socket) do
     {:noreply, socket |> set_hex({:record, socket.assigns.selected}) |> assign(tab: :hex)}
   end
 
-  def handle_event("hex_page", %{"page" => page}, socket) do
-    {:noreply, set_hex(socket, socket.assigns.hex, String.to_integer(page))}
+  def handle_event("hex_page", %{"page" => page}, %{assigns: %{hex: hex}} = socket)
+      when not is_nil(hex) do
+    case parse_integer(page) do
+      {:ok, page} -> {:noreply, set_hex(socket, hex, page)}
+      :error -> {:noreply, socket}
+    end
   end
 
   def handle_event("close", _params, socket) do
     ImageStore.delete_owner(self())
     {:noreply, socket |> reset_file() |> assign(page_title: "Open a file")}
   end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp record_index(%{file: %{records: records}}, value) do
+    case parse_integer(value) do
+      {:ok, index} when index >= 0 and index < length(records) -> {:ok, index}
+      _ -> :error
+    end
+  end
+
+  defp record_index(_assigns, _value), do: :error
+
+  defp parse_integer(value) when is_integer(value), do: {:ok, value}
+
+  defp parse_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_integer(_value), do: :error
 
   # -- Rendering ---------------------------------------------------------------
 

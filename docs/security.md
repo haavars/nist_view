@@ -117,12 +117,14 @@ than crash.
    release could send a fake `ready:` URL, and the shell would put the launch
    token in that URL. Fix: include a shared secret in `ready:` and check it
    in the shell.
-6. **Crash reports.** A LiveView crash report can include assigns (file
-   bytes, Type-2 text) in the log. Fix: custom `Inspect` for `NistFile`,
-   `Field` and `ImageRef` that redacts values and data.
-7. **Client event validation.** `select` and `hex_*` events parse integers
-   from the client with `String.to_integer`; bad input crashes that LiveView
-   process only. Validate and ignore instead.
+6. ~~Crash reports.~~ Done 2026-10-01: inspecting a `Field` shows only its
+   number and an `ImageRef` leaves out its bytes, so a parsed file in a log
+   or crash report shows its structure but no values. The LiveView's whole
+   state, which also holds the raw file, is logged only at the `:debug`
+   level (dev); releases log at `:info`.
+7. ~~Client event validation.~~ Done 2026-10-01: the viewer ignores event
+   values that are malformed, out of range or sent with no file open,
+   instead of crashing.
 8. **Signing and notarization.** macOS builds are signed ad hoc; Developer ID
    signing and notarization need the certificates (CI secrets are wired in
    `.github/workflows/desktop.yml`). Windows signing likewise.

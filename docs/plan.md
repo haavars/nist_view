@@ -278,8 +278,6 @@ Details, fuzzing results and open items: [security.md](security.md).
   - minimised regression inputs for lossless JPEG (WSQ has them)
   - a sandbox for the helper, now defence in depth
   - authentication for PubSub `ready:`
-  - redacted crash reports
-  - validation of client events
   - Developer ID signing and notarization, and Windows signing (need certificates)
 
 ## 8. Open questions
