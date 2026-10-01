@@ -5,8 +5,7 @@ name: CI
 
 on:
   push:
-    # ci: temporary, while the workflows are being made to work (docs/ci.md).
-    branches: [main, ci]
+    branches: [main]
   pull_request:
 
 jobs:

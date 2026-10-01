@@ -9,8 +9,6 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
-    # Temporary, while the workflow is being made to work (docs/ci.md, step 2).
-    branches: [ci]
 
 env:
   MIX_ENV: prod

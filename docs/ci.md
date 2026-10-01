@@ -26,47 +26,37 @@ macOS x86_64 (Intel) was dropped on 2026-10-01: nobody uses it.
 
 ## Steps
 
-1. **Test workflow** (`.github/workflows/ci.yml`), on every push to `main`
-   and every pull request.
-   - Jobs on `ubuntu-24.04` and `macos-15`: the decoder's pixel checks
-     depend on the CPU, so both x86_64 and arm64 run them.
-   - Versions from `.tool-versions` (Erlang, Elixir, Rust), so CI and the
-     dev machines agree: `setup-beam` with `version-file`.
-   - Caches: Mix deps and `_build`, Cargo (`Swatinem/rust-cache`), and the
-     BioCTS samples (`mix nist.samples`, 150 MB from nist.gov, keyed on the
-     archive URL). Without the samples, `biocts_sample_test.exs` is
-     skipped.
-   - Run `mix precommit`, then `git diff --exit-code`: precommit formats
-     and unlocks unused deps in place, so a change there means something
-     was not committed.
+1. ✅ (2026-10-01) **Test workflow** (`.github/workflows/ci.yml`), on every
+   push to `main` and every pull request: `mix precommit` on `ubuntu-24.04`
+   and `macos-15` (the decoder's pixel checks depend on the CPU), then a
+   check that it changed no file (it formats in place). Versions come from
+   `.tool-versions`. Cached: Mix deps, `_build` with `priv/native` (Rustler
+   does not rebuild the NIF when the Elixir code is unchanged, so the
+   gitignored `.so` has to be cached too), Cargo, and the BioCTS samples.
+   About three minutes.
 
-2. **Make `desktop.yml` build**, on a branch `ci`, with a temporary
-   `push: branches: [ci]` trigger to iterate (a manual run of a workflow
-   only appears once the file is on `main`). Known gaps, compared with
-   Livebook's working workflow:
-   - Linux arm64: `setup-beam` misreads the runner's `ImageOS` (setup-beam
-     pull request #462). Livebook strips the `-arm64` suffix around the
-     step; copy that.
-   - Tauri CLI: with no `package.json`, `tauri-action` installs the newest
-     CLI. Install `tauri-cli` at the version matching `src-tauri/Cargo.lock`
-     (tauri 2.12) and point `tauriScript` at it.
-   - Cargo cache for `src-tauri` and `native/`.
-   - Versions from `.tool-versions`, as in step 1.
-   Expect more failures than these, since the workflow has never run.
-   Windows is the least tested: no release has been built there, and
-   `mix release` and ElixirKit have only run on macOS.
+2. ✅ (2026-10-01) **`desktop.yml` builds all four targets.** Needed, compared
+   with the first version: the `ImageOS` workaround for `setup-beam` on
+   arm64 Ubuntu (from Livebook), the Tauri CLI pinned to the `tauri` crate
+   (`TAURI_CLI_VERSION`; the newest CLI is a 3.0 alpha), ad-hoc signing
+   set explicitly (an empty `APPLE_SIGNING_IDENTITY` made ElixirKit's
+   `codesign` fail), and a Cargo cache. Windows built on the first try.
+   With a warm cache a target takes about four minutes; compiling the
+   Tauri CLI into an empty cache (caches expire after 7 days unused) adds
+   4 to 10 minutes.
 
-3. **Smoke test in each bundle job.** After the build, start the bundled
-   release with `rel/bin/nist_view eval` and decode a committed fixture of
-   each codec. This checks the Erlang runtime, the NIF and the
-   `nist_decode` helper on every target, without a display.
+3. ✅ (2026-10-01) **Smoke test in each bundle job**
+   (`scripts/release_smoke.exs`): the bundled release decodes a WSQ, a
+   lossless JPEG and a JPEG 2000 fixture, which checks its Erlang runtime,
+   the NIF and the `nist_decode` helper on every target.
 
-4. **Releases from tags.** A `v*` tag builds all four and attaches them to
-   a draft GitHub release, with asset names
-   `NIST-Viewer-<platform>-<arch>`. A last job writes `SHA256SUMS` for all
-   assets, so whoever carries them into the airgapped network can check
-   them. The job fails if the tag differs from the version in `mix.exs` and
-   `src-tauri/tauri.conf.json`.
+4. **Releases from tags.** A `v*` tag first checks the tag against the
+   version in `mix.exs`, `src-tauri/tauri.conf.json` and
+   `src-tauri/Cargo.toml`. After the builds, the `release` job attaches
+   every installer (spaces in names replaced by `-`) and `SHA256SUMS` to
+   a draft release, with `.github/release-notes.md` as its text. A person
+   publishes the draft. To release: bump the three versions, merge, then
+   tag `main` and push the tag.
 
 5. **Install on clean machines**, by hand, once per target: a machine
    without dev tools, offline. Check that the app starts, opens a file
@@ -96,8 +86,9 @@ let Dependabot update them.
 
 ## Who does what
 
-- Pushing to GitHub, and the GitHub settings (Actions enabled, workflow
-  permission to write contents for releases): the owner.
-- Steps 1 to 4: in a session, from this Linux machine; iterating means
-  pushing the `ci` branch and reading the run logs.
+- Pushing tags and merging to `main`: the owner. The `release` job asks
+  for permission to write contents itself, so no repository setting is
+  needed.
+- Steps 1 to 4: done from a session on the Linux machine, with `gh`
+  (installed in `~/.local/bin`) to read the run logs.
 - Step 5 needs a Mac, a Windows machine and a Linux desktop.
