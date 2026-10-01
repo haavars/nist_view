@@ -46,13 +46,17 @@ jobs:
             native/nbis_ref
             native/opj_ref
 
+      # priv/native holds the NIF and the helper that the build copies there;
+      # with _build restored and the Elixir code unchanged, Rustler does not
+      # rebuild the NIF, so it has to come from the cache too.
       - name: Cache Mix deps and build
         uses: actions/cache@v4
         with:
           path: |
             deps
             _build
-          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
+            priv/native
+          key: mix-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions', 'mix.lock') }}
 
       # The BioCTS samples (150 MB from nist.gov); without them
       # biocts_sample_test.exs is skipped.
