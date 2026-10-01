@@ -1,6 +1,6 @@
 //! JPEG 2000 (JP2 files and raw codestreams) in safe Rust, with the
 //! `hayro-jpeg2000` crate: a patched copy, `native/hayro-jpeg2000`, built
-//! without SIMD so that nothing in it is `unsafe` (docs/jp2-port.md).
+//! without SIMD so that nothing in it is `unsafe` (docs/jp2.md).
 //!
 //! The crate decodes; the conversion of its components to 8 bits is ours.
 //! Its own packing scales samples of more than 8 bits differently from what

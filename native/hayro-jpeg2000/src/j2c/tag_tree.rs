@@ -72,7 +72,7 @@ impl TagNode {
         // nist_view: an empty node has only empty descendants, and none of
         // them is kept. Without this, a tree walks the whole square of its
         // longer side: 4^13 calls for a precinct 8192 code blocks wide and
-        // one high, where about 16,000 nodes exist (docs/jp2-port.md).
+        // one high, where about 16,000 nodes exist (docs/jp2.md).
         if width == 0 || height == 0 {
             return tag;
         }

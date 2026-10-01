@@ -8,9 +8,6 @@ defmodule NistView.ImageRef do
   what the data turned out to be (see `NistView.ImageFormat`), which
   decoding follows; it equals `compression` unless the bytes disagree
   with the label.
-
-  Inspecting an image ref leaves out `data`, so image bytes do not reach
-  logs or crash reports.
   """
 
   @type t :: %__MODULE__{
@@ -25,6 +22,7 @@ defmodule NistView.ImageRef do
           colorspace: String.t() | nil
         }
 
+  # The image bytes must not end up in logs or crash reports.
   @derive {Inspect, except: [:data]}
   defstruct [:compression, :format, :label, :data, :width, :height, :ppi, :bit_depth, :colorspace]
 end

@@ -2,9 +2,9 @@
 
 `native/nist_codecs/fuzz` is a cargo-fuzz crate. The targets call the decoders
 directly (the `nist_codecs` library with its `nif` feature off), and the run
-script builds with AddressSanitizer. The decoders are all Rust; the C that
-two of the targets link is the WSQ reference decoder (NBIS), and it is
-instrumented too, so its memory errors are caught where they happen.
+script builds with AddressSanitizer. The decoders are all Rust; the only C is
+the WSQ reference decoder (NBIS) in two of the targets, instrumented too, so
+its memory errors are caught where they happen.
 
 ## Targets
 
@@ -131,56 +131,31 @@ CC=$(brew --prefix llvm)/bin/clang CFLAGS="-fsanitize=address,fuzzer-no-link" \
   cargo +nightly fuzz run wsq fuzz/artifacts/wsq/crash-<hash>
 ```
 
-## Results (2026-09-29, 10 minutes per target)
+## Results so far
 
-See [`security.md`](security.md#fuzzing-results). In short: NBIS WSQ had one
-stack overflow (patched), and, correcting an earlier claim, four more bugs
-still crash the patched build (see [`wsq-port.md`](wsq-port.md)); NBIS lossless JPEG had many bugs
-and was replaced; the Rust decoders, header readers and OpenJPEG had none.
-NBIS WSQ was replaced by a safe-Rust decoder on 2026-09-30; the `wsq` target
-fuzzes that decoder from then on.
+| Target | Longest run | Result |
+|---|---|---|
+| `wsq` | 115 min, 10 processes, 1.5 million inputs (x86_64) | No crash, timeout or out-of-memory |
+| `wsq_diff` | 115 min, 12 processes, 287,000 inputs | No difference from NBIS, no memory error in NBIS |
+| `jp2` | 110 min, 20 processes, 2.0 million inputs | No crash; 18 slow inputs, since fixed ([jp2.md](jp2.md#slow-inputs)) |
+| `jpegl` | 10 min, 4.8 million inputs | No crash |
+| `headers` | 10 min, 25 million inputs | No crash |
 
-## Results for the Rust WSQ decoder (2026-09-30, 115 minutes per target)
-
-x86_64 Linux, clang 23.1, both targets running side by side.
-
-| Target | Processes | Inputs | Result |
-|---|---|---|---|
-| `wsq` | 10 | 1,504,967 | no crash, timeout or out-of-memory |
-| `wsq_diff` | 12 | 287,115 | no difference from NBIS, no memory error in NBIS |
-
-`replay.sh` afterwards, over 1,141 corpus and crash files: nothing that NBIS
-decodes cleanly and the Rust decoder rejects. It did show a sixth NBIS bug, a
-`memcpy` of −1 bytes for a comment of length 1.
-
-An earlier ten-minute run, with the full 100-megapixel limit, reported one
-timeout: a 12 KB file declaring 17 megapixels. That led to the lower limit
-under cargo-fuzz described above.
-
-## Results for the Rust JPEG 2000 decoder (2026-09-30, 110 minutes)
-
-x86_64 Linux, the `jp2` target with 20 processes, stopped by hand: 2,037,781
-inputs, no crash, no out-of-memory, and coverage still rising. It saved 18
-slow inputs (12 timeouts, 6 slow units), all small files that declare very
-long and thin images; they took 1 to 8 seconds in a normal build. The cause
-was a tag-tree loop in the crate whose time grew with the square of a
-precinct's longer side; fixed in our copy, they now take about 0.1 seconds
-([`jp2-port.md`](jp2-port.md#slow-inputs)).
-
-A temporary differential target compared the Rust lossless JPEG decoder with
-NBIS: wherever NBIS decoded an image, ours had to produce the same pixels.
-Apart from NBIS's own memory errors, it found one disagreement: NBIS ignores
-a scan header's declared length, which our decoder (and libjpeg-turbo)
-honour. The target was removed with the NBIS decoder.
+Earlier findings, all fixed by replacing the C: seven memory bugs in NBIS WSQ
+([wsq.md](wsq.md#why-not-nbis)) and many in NBIS lossless JPEG. A temporary
+differential target against NBIS lossless JPEG found one real disagreement
+(NBIS ignores a scan header's declared length; we and libjpeg-turbo honour
+it) and was removed with that decoder. Under the full 100-megapixel limit,
+`wsq` reported a 12 KB file declaring 17 megapixels as a timeout, which led
+to the lower limit under cargo-fuzz.
 
 ## Next
 
-- Differential target against libjpeg-turbo 3.2 (decided; not written yet):
-  build libjpeg-turbo with ASan, link it only into the fuzz crate, correct
-  NBIS's table class before handing it the bytes, request no colour
-  conversion, and assert identical pixels.
-- Longer runs (hours per target) for `jpegl`, `jp2` (again, with the
-  tag-tree fix) and `headers`, and a scheduled CI job: `overnight.sh`. The
-  WSQ targets have not been run on arm64.
-- Regression inputs for lossless JPEG in `fuzz/regressions/jpegl/` (WSQ has
-  them); see [`security.md`](security.md#open-items).
+- Differential target against libjpeg-turbo 3.2 (decided, not written):
+  build it with ASan, link it only into the fuzz crate, correct NBIS's table
+  class before handing it the bytes, request no colour conversion, and
+  assert identical pixels.
+- ~~Runs of hours~~: not planned, since the viewer runs airgapped on known
+  data ([decisions.md](decisions.md), 2026-10-01). `overnight.sh` stays for
+  a run after a decoder change.
+- Regression inputs for lossless JPEG in `fuzz/regressions/jpegl/`.

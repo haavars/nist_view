@@ -1,6 +1,6 @@
 # Writes every distinct WSQ image in test/fixtures and test/samples to a
 # directory, one file per image named by SHA-1. Used to compare WSQ decoders
-# (see docs/wsq-port.md). The output contains BioCTS prints: keep it out of git.
+# (see docs/wsq.md). The output contains BioCTS prints: keep it out of git.
 #
 #     mix run scripts/extract_wsq.exs OUT_DIR
 [out] = System.argv()

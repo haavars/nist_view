@@ -211,5 +211,28 @@ defmodule NistView.Viewer do
       when reason in [:invalid_wsq, :invalid_jpegl, :invalid_jp2, :invalid_dimensions],
       do: "the image data is invalid or corrupt"
 
-  def describe(reason), do: inspect(reason)
+  def describe(reason) when is_atom(reason), do: inspect(reason)
+  def describe(_reason), do: "unexpected error"
+
+  @doc """
+  Describes why rendering an image stopped with an exit, such as a crash in
+  the code that turns decoded pixels into PNG. Only the kind of error and
+  where it happened: its terms and arguments can hold the image's pixels.
+  """
+  @spec describe_exit(term()) :: String.t()
+  def describe_exit({exception, [_ | _] = stack}) when is_exception(exception),
+    do: "internal error (#{inspect(exception.__struct__)}#{where(stack)})"
+
+  def describe_exit({reason, [_ | _] = stack}) when is_atom(reason),
+    do: "internal error (#{reason}#{where(stack)})"
+
+  def describe_exit(reason) when is_atom(reason), do: "internal error (#{reason})"
+  def describe_exit(_reason), do: "internal error"
+
+  defp where([{module, fun, args, _location} | _]) when is_atom(module) and is_atom(fun) do
+    arity = if is_list(args), do: length(args), else: args
+    " in #{inspect(module)}.#{fun}/#{arity}"
+  end
+
+  defp where(_stack), do: ""
 end

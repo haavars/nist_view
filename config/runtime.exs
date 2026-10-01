@@ -8,6 +8,8 @@ import Config
 #   * PORT=0 - the OS picks a free port; NistView.Desktop reports it back
 #   * NIST_VIEW_LAUNCH_TOKEN - a per-launch secret every page must carry
 #     once (see NistViewWeb.LaunchToken)
+#   * NIST_VIEW_READY_SECRET - a per-launch secret NistView.Desktop puts in
+#     `ready:`, so the shell knows the message comes from this server
 #   * PHX_SERVER=true (releases) and ELIXIRKIT_PUBSUB
 if System.get_env("PHX_SERVER") do
   config :nist_view, NistViewWeb.Endpoint, server: true
@@ -17,6 +19,7 @@ config :nist_view, NistViewWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 config :nist_view, :launch_token, System.get_env("NIST_VIEW_LAUNCH_TOKEN")
+config :nist_view, :ready_secret, System.get_env("NIST_VIEW_READY_SECRET")
 
 if config_env() == :prod do
   # Sessions only need to live as long as this launch, so a fresh random

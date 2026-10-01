@@ -7,6 +7,9 @@ defmodule NistView.Application do
 
   @impl true
   def start(_type, _args) do
+    # Before anything can crash: crash reports must not carry file contents.
+    Logger.add_translator({NistView.LogRedaction, :translate})
+
     # Set by the desktop shell (src-tauri); absent in a plain `mix phx.server`.
     pubsub = System.get_env("ELIXIRKIT_PUBSUB")
 

@@ -5,9 +5,6 @@ defmodule NistView.Field do
   `value` is the raw field content: text with separators still in it, or
   the image bytes for a binary field. `subfields` splits text on RS
   (0x1E) and then US (0x1F); it is nil for binary content.
-
-  Inspecting a field shows only its number: values hold personal data
-  and must not reach logs or crash reports.
   """
 
   @type t :: %__MODULE__{
@@ -16,6 +13,8 @@ defmodule NistView.Field do
           subfields: [[binary()]] | nil
         }
 
+  # The value can be personal data (Type-2 text) or image bytes, and must
+  # not end up in logs or crash reports.
   @derive {Inspect, only: [:number]}
   defstruct [:number, :value, :subfields]
 

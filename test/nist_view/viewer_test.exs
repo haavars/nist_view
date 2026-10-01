@@ -70,5 +70,22 @@ defmodule NistView.ViewerTest do
 
     assert Viewer.describe(:invalid_wsq) == "the image data is invalid or corrupt"
     assert Viewer.describe(:something_new) == ":something_new"
+    assert Viewer.describe({:something, <<1, 2, 3>>}) == "unexpected error"
+  end
+
+  test "describes a crash while rendering without the pixels in it" do
+    pixels = :binary.copy(<<130, 121, 118>>, 1000)
+    undef = {:undef, [{NistView.Codecs, :encode_png, [pixels, 3300, 4400, 3], []}]}
+
+    assert Viewer.describe_exit(undef) ==
+             "internal error (undef in NistView.Codecs.encode_png/4)"
+
+    match = {%MatchError{term: pixels}, [{NistView.Imaging, :displayable, 1, []}]}
+
+    assert Viewer.describe_exit(match) ==
+             "internal error (MatchError in NistView.Imaging.displayable/1)"
+
+    assert Viewer.describe_exit(:killed) == "internal error (killed)"
+    assert Viewer.describe_exit({:shutdown, pixels}) == "internal error"
   end
 end

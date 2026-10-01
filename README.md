@@ -17,6 +17,11 @@ mix phx.server
 Open <http://localhost:4000> and drop a file, or open a local file with
 `http://localhost:4000/?path=/full/path/file.an2` (development only).
 
+After a change under `native/nist_codecs`, restart `mix phx.server`. The
+code reloader recompiles the NIF but cannot load it again into a running VM,
+so PNG encoding (every WSQ, JPEG 2000 and lossless JPEG image) fails with
+`undef` until the restart. Releases never reload code.
+
 ## Desktop app (Tauri)
 
 Needs the Tauri CLI: `cargo install tauri-cli --version "^2.11" --locked`.
@@ -38,9 +43,10 @@ re-signed: `codesign --force --sign - _build/tailwind-macos-arm64-*`.
 
 ## Documentation
 
-- [`docs/plan.md`](docs/plan.md): goals, milestones and their status
+- [`docs/plan.md`](docs/plan.md): goals, status and what's next
 - [`docs/architecture.md`](docs/architecture.md): how it is built
 - [`docs/formats.md`](docs/formats.md): the ANSI/NIST-ITL format as implemented, with its quirks
+- [`docs/wsq.md`](docs/wsq.md), [`docs/jp2.md`](docs/jp2.md): the WSQ and JPEG 2000 decoders
 - [`docs/security.md`](docs/security.md): data handling, fuzzing results, open items
 - [`docs/fuzzing.md`](docs/fuzzing.md): how to fuzz the decoders
 - [`docs/decisions.md`](docs/decisions.md): decision log

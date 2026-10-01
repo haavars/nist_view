@@ -9,8 +9,7 @@ Laurenz Stampfl and contributors, under Apache-2.0 or MIT (`LICENSE-APACHE`,
 It is here, instead of being a registry dependency, because of two fixes that
 no release has yet. `nist_codecs` uses it with `default-features = false`:
 no SIMD and no `std` feature, which leaves no `unsafe`, no dependencies and
-no fused multiply-add. Why and how it was chosen: `docs/jp2-rust-eval.md`
-and `docs/jp2-port.md`.
+no fused multiply-add. Why and how it was chosen: `docs/jp2.md`.
 
 ## What differs from the published crate
 

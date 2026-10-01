@@ -134,7 +134,7 @@ defmodule NistView.BioctsSampleTest do
   # fused multiply-add (`-ffp-contract=off`). That is the arithmetic the C
   # source states, and it is the same on every platform and compiler; a
   # build that fuses (clang's default on arm64) differs by 1 in a few pixels
-  # (docs/wsq-port.md). All 47 distinct WSQ images in the set were compared
+  # (docs/wsq.md). All 47 distinct WSQ images in the set were compared
   # bit for bit on 2026-09-30.
   @dwsq_sha256 [
     {"pass-type-4-tpcard.an2", 1,

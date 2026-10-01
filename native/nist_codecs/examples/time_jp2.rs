@@ -3,7 +3,7 @@
 //!     cargo run --release --no-default-features --example time_jp2 -- FILE...
 //!
 //! and prints what the codestream's SIZ and COD markers declare, which is
-//! what decides the cost (docs/jp2-port.md, "Slow inputs").
+//! what decides the cost (docs/jp2.md, "Slow inputs").
 
 fn main() {
     for path in std::env::args().skip(1) {

@@ -5,7 +5,7 @@
 //! writing outside its buffers, `decode` returns the pixels and resolution
 //! that NBIS gives when it is built without fused multiply-add
 //! (`native/nbis_ref`). Where NBIS fails or corrupts memory, this returns an
-//! error. docs/wsq-port.md describes the NBIS behaviour reproduced here;
+//! error. docs/wsq.md describes the NBIS behaviour reproduced here;
 //! the parts that look odd are deliberate:
 //!
 //! * Segment lengths are ignored, except for Huffman tables and comments

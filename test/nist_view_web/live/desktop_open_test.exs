@@ -33,6 +33,11 @@ defmodule NistViewWeb.DesktopOpenTest do
     assert has_element?(view, "#records-0")
   end
 
+  test "ready carries the shell's secret before the URL" do
+    assert Desktop.ready_message("s3cret", 4123) == "ready:s3cret http://127.0.0.1:4123"
+    assert_raise FunctionClauseError, fn -> Desktop.ready_message("", 4123) end
+  end
+
   test "ignores ids nobody registered", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/?open=unknown")
     assert has_element?(view, "#drop-zone")

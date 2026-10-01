@@ -11,7 +11,7 @@ defmodule NistViewWeb.ViewerLive do
 
   import NistViewWeb.ViewerComponents
 
-  alias NistView.{Field, FieldNames, ImageStore, Imaging, Parser, Record, Viewer}
+  alias NistView.{Field, FieldNames, ImageStore, Imaging, NistFile, Parser, Record, Viewer}
   alias NistViewWeb.MemoryUploadWriter
 
   @max_file_size 1_000_000_000
@@ -233,7 +233,7 @@ defmodule NistViewWeb.ViewerLive do
     do: %{status: :error, error: Viewer.describe(reason)}
 
   defp render_result({:exit, reason}),
-    do: %{status: :error, error: "decoder crashed: #{inspect(reason)}"}
+    do: %{status: :error, error: "Rendering stopped: #{Viewer.describe_exit(reason)}"}
 
   # -- Hex ---------------------------------------------------------------------
 
@@ -265,16 +265,19 @@ defmodule NistViewWeb.ViewerLive do
 
   # -- Events ------------------------------------------------------------------
 
-  # Event values come from the client: anything malformed, out of range or
-  # arriving without a file open is ignored rather than crashing the view.
-
   @impl true
   def handle_event("validate", _params, socket), do: {:noreply, socket}
 
-  def handle_event("select", %{"index" => index}, socket) do
-    case record_index(socket.assigns, index) do
-      {:ok, index} -> {:noreply, socket |> assign(view: :record) |> select(index)}
-      :error -> {:noreply, socket}
+  # Event parameters come from the client and are checked, not trusted: an
+  # event that is malformed, out of range, or sent with no file open is
+  # ignored (the last clause) rather than crashing this process.
+  def handle_event("select", %{"index" => index}, %{assigns: %{file: %NistFile{}}} = socket) do
+    case parse_integer(index) do
+      {:ok, index} when index >= 0 and index < length(socket.assigns.file.records) ->
+        {:noreply, socket |> assign(view: :record) |> select(index)}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -289,6 +292,8 @@ defmodule NistViewWeb.ViewerLive do
     {:noreply, if(index == socket.assigns.selected, do: socket, else: select(socket, index))}
   end
 
+  def handle_event("key", _params, socket), do: {:noreply, socket}
+
   def handle_event("view", %{"view" => "tenprint"}, socket) do
     socket = Enum.reduce(Map.values(socket.assigns.tenprint), socket, &ensure_render(&2, &1))
     {:noreply, assign(socket, view: :tenprint)}
@@ -301,25 +306,24 @@ defmodule NistViewWeb.ViewerLive do
     {:noreply, assign(socket, tab: String.to_existing_atom(tab))}
   end
 
-  def handle_event("hex_field", %{"number" => number}, %{assigns: %{record: %Record{}}} = socket) do
-    %{record: record, selected: selected} = socket.assigns
-
-    with {:ok, number} <- parse_integer(number),
-         %Field{} <- Record.field(record, number) do
-      {:noreply, socket |> set_hex({:field, selected, number}) |> assign(tab: :hex)}
-    else
-      _ -> {:noreply, socket}
+  def handle_event("hex_field", %{"number" => number}, %{assigns: %{selected: index}} = socket)
+      when is_integer(index) do
+    case parse_integer(number) do
+      {:ok, number} -> {:noreply, socket |> set_hex({:field, index, number}) |> assign(tab: :hex)}
+      :error -> {:noreply, socket}
     end
   end
 
-  def handle_event("hex_record", _params, %{assigns: %{record: %Record{}}} = socket) do
-    {:noreply, socket |> set_hex({:record, socket.assigns.selected}) |> assign(tab: :hex)}
+  def handle_event("hex_record", _params, %{assigns: %{selected: index}} = socket)
+      when is_integer(index) do
+    {:noreply, socket |> set_hex({:record, index}) |> assign(tab: :hex)}
   end
 
-  def handle_event("hex_page", %{"page" => page}, %{assigns: %{hex: hex}} = socket)
-      when not is_nil(hex) do
+  # set_hex/3 clamps the page to the ones there are.
+  def handle_event("hex_page", %{"page" => page}, %{assigns: %{hex: target}} = socket)
+      when not is_nil(target) do
     case parse_integer(page) do
-      {:ok, page} -> {:noreply, set_hex(socket, hex, page)}
+      {:ok, page} -> {:noreply, set_hex(socket, target, page)}
       :error -> {:noreply, socket}
     end
   end
@@ -330,15 +334,6 @@ defmodule NistViewWeb.ViewerLive do
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
-
-  defp record_index(%{file: %{records: records}}, value) do
-    case parse_integer(value) do
-      {:ok, index} when index >= 0 and index < length(records) -> {:ok, index}
-      _ -> :error
-    end
-  end
-
-  defp record_index(_assigns, _value), do: :error
 
   defp parse_integer(value) when is_integer(value), do: {:ok, value}
 
@@ -373,8 +368,18 @@ defmodule NistViewWeb.ViewerLive do
         />
 
         <%= if @file do %>
-          <div class="flex min-h-0 flex-1">
+          <div id="workspace" class="flex min-h-0 flex-1">
             <.sidebar streams={@streams} file={@file} error={@error} />
+            <.splitter
+              id="split-sidebar"
+              orientation="vertical"
+              panel="#sidebar"
+              side="left"
+              var="--sidebar-w"
+              min={220}
+              keep={480}
+              label="Resize the record list"
+            />
 
             <main class="flex min-w-0 flex-1 flex-col">
               <.tenprint_card
@@ -399,10 +404,12 @@ defmodule NistViewWeb.ViewerLive do
               </div>
             </main>
           </div>
+          <.status_bar file={@file} error={@error} />
         <% else %>
           <.empty_state upload={@uploads.transaction} />
         <% end %>
       </div>
+      <.shortcuts />
     </Layouts.app>
     """
   end

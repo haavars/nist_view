@@ -1,6 +1,7 @@
 defmodule NistViewWeb.ViewerLiveTest do
   use NistViewWeb.ConnCase, async: true
 
+  import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
 
   @phantom File.read!("test/fixtures/phantom_enrol.an2")
@@ -89,6 +90,72 @@ defmodule NistViewWeb.ViewerLiveTest do
     assert has_element?(view, "#hex-lines #hex-0", "89 50 4E 47")
   end
 
+  test "shows the file's facts, a status bar and resizable panes", %{conn: conn} do
+    view = open(conn, @phantom)
+
+    assert has_element?(view, "#file-facts", "ENROL")
+    assert has_element?(view, "#status-bar", "6 records")
+    assert has_element?(view, "#split-sidebar[role=separator]")
+    # Record 2 has an image, so its fields panel can be resized too.
+    assert has_element?(view, "#split-fields[role=separator]")
+    assert has_element?(view, "#shortcuts[role=dialog], #shortcuts [role=dialog]")
+  end
+
+  test "shows repeated subfields as a table", %{conn: conn} do
+    view = open(conn, @phantom)
+    view |> element("#records-0") |> render_click()
+
+    # 1.003 CNT has one subfield per record.
+    assert has_element?(view, "#fields-0-3 table tr:nth-child(6)")
+    refute has_element?(view, "#fields-0-4 table")
+  end
+
+  test "ignores malformed and out-of-range events", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    # No file open yet.
+    render_click(view, "select", %{"index" => "0"})
+    render_click(view, "hex_record", %{})
+    render_click(view, "hex_field", %{"number" => "1"})
+    render_click(view, "hex_page", %{"page" => "1"})
+    render_click(view, "tab", %{"tab" => "other"})
+    render_click(view, "no_such_event", %{})
+    assert has_element?(view, "#drop-zone")
+
+    view = open(conn, @phantom)
+
+    for index <- ["x", "", "1.5", "-1", "6", "99999999999999999999", nil],
+        do: render_click(view, "select", %{"index" => index})
+
+    render_click(view, "select", %{})
+    render_click(view, "hex_field", %{"number" => "x"})
+    render_click(view, "hex_page", %{"page" => "x"})
+    render_click(view, "view", %{"view" => "other"})
+    assert has_element?(view, "#records-2[aria-current=true]")
+
+    # A page past the end is clamped to the last page.
+    render_click(view, "hex_page", %{"page" => "99999999999999999999"})
+    view |> element("#tab-hex") |> render_click()
+    assert has_element?(view, "#hex-lines > div")
+  end
+
+  test "a crash report leaves out the file and the message", %{conn: conn} do
+    # The view is linked to the test process.
+    Process.flag(:trap_exit, true)
+    view = open(conn, @phantom)
+    ref = Process.monitor(view.pid)
+
+    log =
+      capture_log(fn ->
+        send(view.pid, {:unexpected, "SECRET-TEXT"})
+        assert_receive {:DOWN, ^ref, :process, _pid, _reason}
+      end)
+
+    assert log =~ "FunctionClauseError"
+    refute log =~ "SECRET-TEXT"
+    refute log =~ "assigns:"
+  end
+
   test "lays out the tenprint card", %{conn: conn} do
     view = open(conn, @phantom)
 
@@ -152,43 +219,5 @@ defmodule NistViewWeb.ViewerLiveTest do
 
     assert has_element?(view, "#drop-zone")
     refute has_element?(view, "#records-0")
-  end
-
-  test "ignores malformed or out-of-range event values", %{conn: conn} do
-    view = open(conn, @phantom)
-
-    for {event, params} <- [
-          {"select", %{"index" => "x"}},
-          {"select", %{"index" => "999"}},
-          {"select", %{"index" => "-1"}},
-          {"select", %{}},
-          {"hex_field", %{"number" => "1e3"}},
-          {"hex_field", %{"number" => "50"}},
-          {"hex_page", %{"page" => "next"}},
-          {"tab", %{"tab" => "other"}},
-          {"view", %{"view" => "other"}},
-          {"unknown", %{}}
-        ] do
-      render_hook(view, event, params)
-    end
-
-    assert has_element?(view, "#records-2[aria-current=true]")
-    assert has_element?(view, "#fields-panel:not(.hidden)")
-  end
-
-  test "ignores record events before a file is open", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/")
-
-    for {event, params} <- [
-          {"select", %{"index" => "0"}},
-          {"key", %{"key" => "ArrowDown"}},
-          {"hex_field", %{"number" => "1"}},
-          {"hex_record", %{}},
-          {"hex_page", %{"page" => "1"}}
-        ] do
-      render_hook(view, event, params)
-    end
-
-    assert has_element?(view, "#drop-zone")
   end
 end

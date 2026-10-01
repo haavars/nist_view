@@ -1,7 +1,7 @@
 # CI and release builds on GitHub
 
 Plan, 2026-10-01. Goal: tests on every push, and installers for all four
-targets ([plan.md](plan.md#5-build-and-distribution)) from a tag, built on
+targets ([plan.md](plan.md#build-targets)) from a tag, built on
 GitHub-hosted runners. The repository is public, so all runners used here,
 including macOS and Linux arm64, cost nothing.
 
