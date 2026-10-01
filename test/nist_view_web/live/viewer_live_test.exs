@@ -36,7 +36,7 @@ defmodule NistViewWeb.ViewerLiveTest do
     assert has_element?(view, "#fields [id^='fields-2-']")
 
     render_async(view)
-    assert has_element?(view, "#viewer-image[src^='/render/']")
+    assert has_element?(view, "#viewer-stage[data-src^='/render/']")
   end
 
   test "serves the rendered image without caching", %{conn: conn} do
@@ -47,8 +47,8 @@ defmodule NistViewWeb.ViewerLiveTest do
       view
       |> render()
       |> LazyHTML.from_fragment()
-      |> LazyHTML.query("#viewer-image")
-      |> LazyHTML.attribute("src")
+      |> LazyHTML.query("#viewer-stage")
+      |> LazyHTML.attribute("data-src")
 
     conn = get(conn, src)
     assert response(conn, 200)
@@ -219,5 +219,56 @@ defmodule NistViewWeb.ViewerLiveTest do
 
     assert has_element?(view, "#drop-zone")
     refute has_element?(view, "#records-0")
+  end
+
+  test "replaces a JPEG 2000 preview with the full image, and decodes ahead", %{conn: conn} do
+    import NistView.NistBuilder
+
+    image = fn number, label, data ->
+      tagged(14, [
+        {2, Integer.to_string(number)},
+        {6, "128"},
+        {7, "96"},
+        {8, "1"},
+        {9, "500"},
+        {10, "500"},
+        {11, label},
+        {12, "8"},
+        {13, Integer.to_string(number)},
+        {999, data}
+      ])
+    end
+
+    view =
+      open(
+        conn,
+        transaction([
+          {14, 1, image.(1, "JP2", File.read!("test/fixtures/synthetic_grey.jp2"))},
+          {14, 2, image.(2, "WSQ20", File.read!("test/fixtures/synthetic.wsq"))}
+        ])
+      )
+
+    # render_async waits for the preview (test config: at least 32 x 24) and
+    # for the full image and the decode-ahead it starts. The full image keeps
+    # its preview and the full size, for the page to show while it loads.
+    render_async(view)
+    assert has_element?(view, "#viewer-stage[data-width='128'][data-height='96']")
+
+    [stage] =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#viewer-stage")
+      |> Enum.to_list()
+
+    [full] = LazyHTML.attribute(stage, "data-src")
+    [preview] = LazyHTML.attribute(stage, "data-preview")
+    assert full != preview
+    assert response(get(conn, full), 200)
+    assert response(get(conn, preview), 200)
+
+    # The second image was decoded ahead, so it shows without waiting.
+    view |> element("#records-2") |> render_click()
+    assert has_element?(view, "#viewer-stage[data-src^='/render/']")
   end
 end

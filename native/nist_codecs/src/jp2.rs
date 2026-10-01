@@ -14,10 +14,21 @@ use hayro_jpeg2000::{ColorSpace as J2kColorSpace, ComponentData, DecodeSettings,
 const JP2_SIGNATURE: &[u8] = b"\x00\x00\x00\x0C\x6A\x50\x20\x20";
 
 pub fn decode(data: &[u8]) -> Result<Pixels, Error> {
-    let (width, height) = headers::jp2(data).ok_or(Error::InvalidJp2)?;
-    check_dimensions(width, height)?;
+    decode_at(data, None).map(|(pixels, _full_size)| pixels)
+}
 
-    let image = Image::new(data, &DecodeSettings::default()).map_err(|_| Error::InvalidJp2)?;
+/// Decodes at a reduced resolution when `target` is given: the smallest
+/// power-of-two reduction that is still at least `target` in both
+/// directions, which skips the finer resolution levels altogether. Returns
+/// the pixels and the image's full size. Palette images, and images too
+/// small to reduce, come at full size.
+pub fn decode_at(data: &[u8], target: Option<(u32, u32)>) -> Result<(Pixels, (u32, u32)), Error> {
+    let full_size = headers::jp2(data).ok_or(Error::InvalidJp2)?;
+    check_dimensions(full_size.0, full_size.1)?;
+
+    let settings = DecodeSettings { target_resolution: target, ..DecodeSettings::default() };
+    let image = Image::new(data, &settings).map_err(|_| Error::InvalidJp2)?;
+    // At the reduced size, if there is one.
     let (width, height) = (image.width(), image.height());
     check_dimensions(width, height)?;
 
@@ -57,14 +68,15 @@ pub fn decode(data: &[u8]) -> Result<Pixels, Error> {
         return Err(Error::InvalidJp2);
     }
 
-    Ok(Pixels {
+    let pixels = Pixels {
         width,
         height,
         channels: channels as u32,
         ppi: None,
         colorspace,
         data: out,
-    })
+    };
+    Ok((pixels, full_size))
 }
 
 /// What decoding allocates, by estimate: the crate holds every component's
@@ -119,6 +131,26 @@ mod tests {
         let image = decode(RGB).unwrap();
         assert_eq!((image.channels, image.colorspace), (3, ColorSpace::Unspecified));
         assert_eq!(image.data, pattern(|x, y| vec![(x * 2 % 256) as u8, (y * 2 % 256) as u8, ((x + y) % 256) as u8]));
+    }
+
+    #[test]
+    fn a_target_resolution_skips_the_finer_levels() {
+        let (full, full_size) = decode_at(GREY, None).unwrap();
+        assert_eq!(full_size, (128, 96));
+
+        // A quarter is the smallest reduction that is still at least 30 x 20.
+        let (reduced, full_size) = decode_at(GREY, Some((30, 20))).unwrap();
+        assert_eq!((reduced.width, reduced.height, reduced.channels), (32, 24, 1));
+        assert_eq!(reduced.data.len(), 32 * 24);
+        assert_eq!(full_size, (128, 96));
+
+        // The low-pass image keeps the average brightness.
+        let mean = |data: &[u8]| data.iter().map(|&v| v as f64).sum::<f64>() / data.len() as f64;
+        assert!((mean(&reduced.data) - mean(&full.data)).abs() < 2.0);
+
+        // A target at least as large as the image changes nothing.
+        let (same, _) = decode_at(GREY, Some((128, 96))).unwrap();
+        assert_eq!(same.data, full.data);
     }
 
     #[test]

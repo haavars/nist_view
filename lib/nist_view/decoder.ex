@@ -37,6 +37,25 @@ defmodule NistView.Decoder do
   @spec decode(:wsq | :jpegl | :jp2, binary(), keyword()) ::
           {:ok, NistView.Codecs.decoded()} | {:error, atom()}
   def decode(format, data, opts \\ []) when is_map_key(@formats, format) and is_binary(data) do
+    request(<<@formats[format]>>, data, opts)
+  end
+
+  @doc """
+  Decodes a JPEG 2000 image at a reduced resolution, which is much faster
+  for a large one: the smallest power-of-two reduction that is still at
+  least `{width, height}`. The result also has the full size, as
+  `:full_width` and `:full_height`; images that cannot be reduced come at
+  full size.
+
+  Options as for `decode/3`.
+  """
+  @spec decode_preview(binary(), {pos_integer(), pos_integer()}, keyword()) ::
+          {:ok, map()} | {:error, atom()}
+  def decode_preview(data, {width, height}, opts \\ []) when is_binary(data) do
+    request(<<?P, width::32, height::32>>, data, opts)
+  end
+
+  defp request(header, data, opts) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
 
     port =
@@ -47,7 +66,7 @@ defmodule NistView.Decoder do
         packet: 4
       ])
 
-    Port.command(port, [@formats[format], data])
+    Port.command(port, [header, data])
 
     receive do
       {^port, {:data, reply}} ->
@@ -85,6 +104,12 @@ defmodule NistView.Decoder do
        colorspace: Map.fetch!(@colorspaces, cs),
        pixels: pixels
      }}
+  end
+
+  defp parse(<<?P, full_width::32, full_height::32, rest::binary>>) do
+    with {:ok, decoded} <- parse(<<?O, rest::binary>>) do
+      {:ok, Map.merge(decoded, %{full_width: full_width, full_height: full_height})}
+    end
   end
 
   defp parse(<<?E, name::binary>>), do: {:error, Map.get(@errors, name, :decoder_error)}

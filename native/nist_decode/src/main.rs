@@ -8,10 +8,12 @@
 //! message is a 4-byte big-endian length followed by that many bytes.
 //!
 //! * Request: one format byte (`W` WSQ, `L` lossless JPEG, `J` JPEG 2000),
-//!   then the encoded image.
+//!   then the encoded image. Or `P`, a JPEG 2000 preview: the target width
+//!   and height as big-endian u32s, then the image (see `jp2::decode_at`).
 //! * Reply: `O`, then width, height, channels and ppi (0 when unknown) as
 //!   big-endian u32s, one colour space byte (`G` grey, `R` sRGB, `Y` sYCC,
-//!   `U` unspecified) and the pixels; or `E` and an error name.
+//!   `U` unspecified) and the pixels; or `E` and an error name. A preview's
+//!   reply is `P`, the full width and height, then the same as after `O`.
 //!
 //! The process serves requests until stdin closes.
 
@@ -28,6 +30,7 @@ fn main() {
             Some((b'W', data)) => encode(wsq::decode(data)),
             Some((b'L', data)) => encode(jpegl::decode(data)),
             Some((b'J', data)) => encode(jp2::decode(data)),
+            Some((b'P', request)) => preview(request),
             _ => b"Eunknown_format".to_vec(),
         };
 
@@ -51,6 +54,26 @@ fn write_packet(output: &mut impl Write, packet: &[u8]) -> io::Result<()> {
     output.write_all(&len.to_be_bytes())?;
     output.write_all(packet)?;
     output.flush()
+}
+
+fn preview(request: &[u8]) -> Vec<u8> {
+    let Some((target, data)) = request.split_first_chunk::<8>() else {
+        return b"Einvalid_jp2".to_vec();
+    };
+    let width = u32::from_be_bytes([target[0], target[1], target[2], target[3]]);
+    let height = u32::from_be_bytes([target[4], target[5], target[6], target[7]]);
+
+    match jp2::decode_at(data, Some((width, height))) {
+        Ok((pixels, (full_width, full_height))) => {
+            let mut reply = vec![b'P'];
+            reply.extend_from_slice(&full_width.to_be_bytes());
+            reply.extend_from_slice(&full_height.to_be_bytes());
+            // The `O` reply without its `O`.
+            reply.extend_from_slice(&encode(Ok(pixels))[1..]);
+            reply
+        }
+        Err(error) => encode(Err(error)),
+    }
 }
 
 fn encode(result: Result<Pixels, Error>) -> Vec<u8> {

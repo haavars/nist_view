@@ -29,6 +29,41 @@ defmodule NistView.Imaging do
   end
 
   @doc """
+  Whether `preview/2` can make a smaller image faster than the full one:
+  JPEG 2000 at least twice `target` in both directions, or of unknown size.
+  """
+  @spec previewable?(ImageRef.t(), {pos_integer(), pos_integer()}) :: boolean()
+  def previewable?(%ImageRef{format: format, width: w, height: h}, {tw, th})
+      when format in [:jp2, :jp2l] do
+    not (is_integer(w) and is_integer(h)) or (w >= 2 * tw and h >= 2 * th)
+  end
+
+  def previewable?(%ImageRef{}, _target), do: false
+
+  @doc """
+  Like `displayable/1`, but decodes JPEG 2000 at a reduced resolution of at
+  least `target` (see `NistView.Decoder.decode_preview/3`), which is several
+  times faster for a large image. Returns `{:preview, mime, bytes, {width,
+  height}}` with the full size when the image was reduced, and what
+  `displayable/1` returns otherwise.
+  """
+  @spec preview(ImageRef.t(), {pos_integer(), pos_integer()}) ::
+          {:preview, String.t(), binary(), {pos_integer(), pos_integer()}} | displayable()
+  def preview(%ImageRef{format: format, data: data} = image, target)
+      when format in [:jp2, :jp2l] do
+    with {:ok, decoded} <- Decoder.decode_preview(data, target),
+         {:ok, decoded} <- to_rgb(decoded, image),
+         {:ok, png} <-
+           Codecs.encode_png(decoded.pixels, decoded.width, decoded.height, decoded.channels) do
+      if decoded.width < decoded.full_width,
+        do: {:preview, "image/png", png, {decoded.full_width, decoded.full_height}},
+        else: {:ok, "image/png", png}
+    end
+  end
+
+  def preview(%ImageRef{} = image, _target), do: displayable(image)
+
+  @doc """
   Decodes an image to 8-bit greyscale or RGB pixels. Supports WSQ,
   lossless JPEG, JPEG 2000 and uncompressed 8-bit data. YCbCr images are
   converted to RGB.

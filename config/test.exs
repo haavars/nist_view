@@ -20,3 +20,6 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Small enough that the 128 x 96 JPEG 2000 fixture gets a preview.
+config :nist_view, preview_size: {32, 24}

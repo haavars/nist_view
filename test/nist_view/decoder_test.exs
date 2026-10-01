@@ -16,6 +16,16 @@ defmodule NistView.DecoderTest do
     refute_received {_, {:exit_status, _}}
   end
 
+  test "decodes a JPEG 2000 preview at a reduced resolution, with the full size" do
+    jp2 = File.read!("test/fixtures/synthetic_grey.jp2")
+
+    assert {:ok, %{width: 32, height: 24, full_width: 128, full_height: 96, pixels: pixels}} =
+             Decoder.decode_preview(jp2, {30, 20})
+
+    assert byte_size(pixels) == 32 * 24
+    assert {:error, :invalid_jp2} = Decoder.decode_preview(@wsq, {30, 20})
+  end
+
   test "reports a crashed helper instead of crashing the caller" do
     with_executable("test/support/fake_decoders/crash.sh")
     assert {:error, :decoder_crashed} = Decoder.decode(:wsq, @wsq)
