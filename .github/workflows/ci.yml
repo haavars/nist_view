@@ -50,7 +50,7 @@ jobs:
       # with _build restored and the Elixir code unchanged, Rustler does not
       # rebuild the NIF, so it has to come from the cache too.
       - name: Cache Mix deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -62,7 +62,7 @@ jobs:
       # biocts_sample_test.exs is skipped.
       - name: Cache BioCTS samples
         id: samples
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: test/samples/biocts
           key: biocts-2.0.6107.19926

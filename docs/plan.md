@@ -15,7 +15,7 @@ Related documents: [architecture](architecture.md) (how it is built), [formats](
 - Show the record structure as a tree: Type-1 → logical records → fields → subfields → items.
 - Render every image-bearing record, whatever compression it uses.
 - Overlay Type-9 minutiae on the matching fingerprint image.
-- Ship native builds for macOS (arm64, x86_64), Linux (x86_64, aarch64) and Windows (x64).
+- Ship native builds for macOS (arm64), Linux (x86_64, aarch64) and Windows (x64). *(2026-10-01: macOS x86_64 dropped, nobody uses it.)*
 - Display only: no biometric data is written to disk.
 
 **Non-goals (v1)**
@@ -145,7 +145,6 @@ Details, fuzzing results and open items: [security.md](security.md).
 | Target | Runner | Notes |
 |---|---|---|
 | macOS arm64 | macos-15 | Signed ad hoc, not notarized ([ci.md](ci.md)) |
-| macOS x86_64 | macos-15-intel | Or universal binary |
 | Linux x86_64 | Ubuntu 22.04 | webkit2gtk-4.1; build on 22.04 for glibc compatibility; .deb and AppImage |
 | Linux aarch64 | Ubuntu 22.04 arm64 | Same |
 | Windows x64 | windows-2022 | MSI/NSIS; unsigned |
@@ -178,7 +177,7 @@ Details, fuzzing results and open items: [security.md](security.md).
 | M1 | Parser complete ✅ (Prüm samples still to run) | All record types in §2 parse; the BioCTS set, the Prüm samples and phantom files parse without error; M1 and EFS minutiae decode; property tests pass |
 | M2 | Codecs complete ✅ | WSQ, JPEGB, JPEGL, JP2/JP2L, PNG and raw all decode, with bit-exact WSQ results against NBIS |
 | M3 | Viewer UI ✅ | Record tree, image pane, 10-print grid and minutiae overlay working in the browser (`mix phx.server`) |
-| M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all five targets |
+| M4 | Desktop packaging ✅ macOS arm64 (CI for the other targets untested) | Tauri + ElixirKit app opens files via dialog, drag-drop and file association; CI produces bundles for all four targets |
 | M5 | Hardening (in progress: fuzzing ✅, out-of-process ✅, WSQ in Rust ✅ ([wsq-port.md](wsq-port.md)), JPEG 2000 in Rust ✅ ([jp2-port.md](jp2-port.md#where-to-continue)), security review partly; no code signing, decided) | Fuzzing done; decision on moving codecs out of process; signing and notarization; security review of data handling |
 | M6 | Performance | Make sure loading images is fast and as optimized as possible. 
 

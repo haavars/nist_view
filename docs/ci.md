@@ -1,6 +1,6 @@
 # CI and release builds on GitHub
 
-Plan, 2026-10-01. Goal: tests on every push, and installers for all five
+Plan, 2026-10-01. Goal: tests on every push, and installers for all four
 targets ([plan.md](plan.md#5-build-and-distribution)) from a tag, built on
 GitHub-hosted runners. The repository is public, so all runners used here,
 including macOS and Linux arm64, cost nothing.
@@ -8,8 +8,8 @@ including macOS and Linux arm64, cost nothing.
 Why GitHub Actions and not another service: every target has to be built
 on its own OS (the bundle holds an Erlang runtime, a Rust NIF and helper,
 and the platform's webview shell), and GitHub is the only service that
-offers all five for free. Livebook Desktop, built on the same Tauri and
-ElixirKit stack, uses the same five runners with `setup-beam` and
+offers all of them for free. Livebook Desktop, built on the same Tauri and
+ElixirKit stack, uses the same runners with `setup-beam` and
 `tauri-action`. Third-party runners (WarpBuild, Namespace) or a
 self-hosted runner on the MacBook are the fallback if the repository goes
 private and macOS minutes cost too much; each is a one-line `runs-on`
@@ -18,10 +18,11 @@ change.
 | Target | Runner |
 |---|---|
 | macOS arm64 | `macos-15` |
-| macOS x86_64 | `macos-15-intel` (the last Intel image, supported until about August 2027) |
 | Linux x86_64 | `ubuntu-22.04` (older glibc, so the build runs on newer distributions) |
 | Linux arm64 | `ubuntu-22.04-arm` |
 | Windows x64 | `windows-2022` |
+
+macOS x86_64 (Intel) was dropped on 2026-10-01: nobody uses it.
 
 ## Steps
 
@@ -60,7 +61,7 @@ change.
    each codec. This checks the Erlang runtime, the NIF and the
    `nist_decode` helper on every target, without a display.
 
-4. **Releases from tags.** A `v*` tag builds all five and attaches them to
+4. **Releases from tags.** A `v*` tag builds all four and attaches them to
    a draft GitHub release, with asset names
    `NIST-Viewer-<platform>-<arch>`. A last job writes `SHA256SUMS` for all
    assets, so whoever carries them into the airgapped network can check
